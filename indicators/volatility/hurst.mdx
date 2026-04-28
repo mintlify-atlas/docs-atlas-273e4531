@@ -1,0 +1,113 @@
+---
+title: "Hurst Exponent: trending vs mean-reversion indicator"
+description: "The Hurst Exponent uses Rescaled Range Analysis to classify a price series as trending (H>0.5), mean-reverting (H<0.5), or random walk (H≈0.5)."
+---
+
+The Hurst Exponent (`H`) is derived from Rescaled Range Analysis, a technique that examines the statistical self-similarity of a time series. Applied to financial returns, it quantifies whether a price series tends to persist in a trend, revert to its mean, or behave like a pure random walk. Values above 0.5 indicate trending behavior, values below 0.5 indicate mean-reversion, and a value near 0.5 suggests a random walk with no persistent structure.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int">
+  Number of periods (`N`) used in the Rescaled Range Analysis. Must be greater than 20. Default is 100.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N+1` periods of quotes to cover the warmup period.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="HurstExponent" type="double">
+  The Hurst Exponent (`H`). Returns `null` for the first `N` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series
+IReadOnlyList<HurstResult> results =
+    quotes.ToHurst(lookbackPeriods);
+```
+
+## Streaming
+
+Use `HurstList` for incremental calculations without a hub:
+
+```csharp
+HurstList hurstList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    hurstList.Add(quote);
+}
+
+// based on ICollection<HurstResult>
+IReadOnlyList<HurstResult> results = hurstList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+HurstHub observer = quoteHub.ToHurstHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<HurstResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+Hurst can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HLC3 (typical price) instead of Close
+var results = quotes
+    .Use(CandlePart.HLC3)
+    .ToHurst(lookbackPeriods);
+```
+
+Results can be further processed on `HurstExponent`:
+
+```csharp
+var results = quotes
+    .ToHurst(lookbackPeriods)
+    .ToSlope(slopePeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## Interpretation
+
+| H value | Market behavior |
+|---------|----------------|
+| `H > 0.5` | Trending — returns are persistent; a move up is more likely to be followed by another move up |
+| `H ≈ 0.5` | Random walk — no memory; future direction is independent of past |
+| `H < 0.5` | Mean-reverting — anti-persistent; moves tend to reverse |
+
+<Note>
+  The Hurst Exponent is a long-range statistical property, not a short-term signal. Use a larger `lookbackPeriods` (e.g., 100+) for more reliable estimates. Short windows produce noisier results.
+</Note>
+
+## See also
+
+<Columns cols={3}>
+  <Card title="ATR" href="/indicators/volatility/atr">
+    Average True Range — short-term volatility measure
+  </Card>
+  <Card title="Slope" href="/indicators/volatility/slope">
+    Slope and Linear Regression — trend direction and strength
+  </Card>
+  <Card title="Correlation" href="/indicators/volatility/correlation">
+    Correlation Coefficient — relationship between two series
+  </Card>
+</Columns>

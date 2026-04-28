@@ -1,0 +1,158 @@
+---
+title: "Stochastic Oscillator (%K and %D) Indicator"
+description: "Calculate the Stochastic Oscillator to compare current price to recent highs and lows. Returns %K, %D, and %J (KDJ Index) on a 0–100 scale."
+---
+
+The Stochastic Oscillator, created by George Lane and also known as the KDJ Index, is a momentum indicator that compares a security's closing price to its price range over a lookback period. Results are expressed on a 0 to 100 scale, making it straightforward to identify overbought conditions (above 80) and oversold conditions (below 20). The indicator also produces a signal line (%D) and an optional %J component used in KDJ analysis.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Lookback period `N` for the raw oscillator (%K). Must be greater than 0. Default is **14**.
+</ParamField>
+
+<ParamField path="signalPeriods" type="int" required>
+  Smoothing period for the signal line (%D). Must be greater than 0. Default is **3**.
+</ParamField>
+
+<ParamField path="smoothPeriods" type="int" required>
+  Smoothing period `S` applied to %K before plotting. Use **3** for Slow Stochastic, **1** for Fast Stochastic. Default is **3**.
+</ParamField>
+
+<ParamField path="kFactor" type="double">
+  Optional. Weight of %K in the %J calculation. Must be greater than 0. Default is **3**.
+</ParamField>
+
+<ParamField path="dFactor" type="double">
+  Optional. Weight of %D in the %J calculation. Must be greater than 0. Default is **2**.
+</ParamField>
+
+<ParamField path="movingAverageType" type="MaType">
+  Optional. Moving average type used for smoothing — `MaType.SMA` (default) or `MaType.SMMA`. See [MaType options](#matype-options).
+</ParamField>
+
+### MaType options
+
+| Value | Description |
+|-------|-------------|
+| `MaType.SMA` | Simple Moving Average (default) — no convergence errors |
+| `MaType.SMMA` | Smoothed Moving Average — carries convergence errors in early periods |
+
+## Result fields
+
+```csharp
+// standard usage
+IReadOnlyList<StochResult> results =
+  quotes.ToStoch(lookbackPeriods, signalPeriods, smoothPeriods);
+
+// advanced customization
+IReadOnlyList<StochResult> results =
+  quotes.ToStoch(lookbackPeriods, signalPeriods, smoothPeriods,
+                  kFactor, dFactor, movingAverageType);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Oscillator / K" type="double | null">
+  %K oscillator value. `null` for the first `N+S-2` periods. Also accessible as `.K`.
+</ResponseField>
+
+<ResponseField name="Signal / D" type="double | null">
+  %D signal line — simple moving average of %K. Also accessible as `.D`.
+</ResponseField>
+
+<ResponseField name="PercentJ / J" type="double | null">
+  %J = `kFactor × %K − dFactor × %D`. Used in KDJ Index analysis. Also accessible as `.J`.
+</ResponseField>
+
+<Note>
+The `K`, `D`, and `J` aliases are interchangeable with `Oscillator`, `Signal`, and `PercentJ`.
+</Note>
+
+## Usage
+
+```csharp
+IReadOnlyList<StochResult> results =
+  quotes.ToStoch(lookbackPeriods, signalPeriods, smoothPeriods);
+```
+
+Chain further indicators on the `Oscillator` output value:
+
+```csharp
+var results = quotes
+    .ToStoch(14, 3, 3)
+    .ToSlope(5);
+```
+
+<Note>
+The Stochastic Oscillator must be generated directly from `quotes`. It cannot be chained from the output of another indicator.
+</Note>
+
+## Streaming
+
+Use `StochList` for incremental updates without a hub:
+
+```csharp
+StochList stochList = new(lookbackPeriods, signalPeriods, smoothPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  stochList.Add(quote);
+}
+
+// based on ICollection<StochResult>
+IReadOnlyList<StochResult> results = stochList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+StochHub observer = quoteHub.ToStochHub(lookbackPeriods, signalPeriods, smoothPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<StochResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| %K range | Signal |
+|----------|--------|
+| Above 80 | Overbought — potential reversal |
+| 20 – 80 | Neutral zone |
+| Below 20 | Oversold — potential bounce |
+
+A **%K crossing above %D** is a bullish signal; a **%K crossing below %D** is bearish. When both lines are in extreme territory (above 80 or below 20) the crossover signal is stronger. The %J line can exceed 0–100 and amplifies divergence between %K and %D for KDJ analysis.
+
+<Warning>
+When using `MaType.SMMA`, the first `N+100` periods carry convergence-related precision errors up to ~5%. The default `MaType.SMA` does not have this limitation.
+</Warning>
+
+## Minimum history
+
+You must supply at least `N+S` periods of quotes to cover the warmup period.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Stochastic RSI" href="/indicators/oscillators/stoch-rsi">
+    Applies stochastic logic to RSI values.
+  </Card>
+  <Card title="Williams %R" href="/indicators/oscillators/williams-r">
+    Equivalent to fast stochastic with inverted scale.
+  </Card>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Momentum on a 0–100 scale using price changes.
+  </Card>
+  <Card title="CCI" href="/indicators/oscillators/cci">
+    Deviation from typical price range.
+  </Card>
+</CardGroup>

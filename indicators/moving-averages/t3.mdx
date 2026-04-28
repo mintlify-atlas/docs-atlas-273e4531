@@ -1,0 +1,110 @@
+---
+title: "T3: Tillson T3 Moving Average indicator for Stock.Indicators"
+description: "The Tillson T3 combines six sequential EMAs with a tunable volume factor to produce a smooth average that minimizes both lag and price overshoot."
+---
+
+Created by Tim Tillson, the T3 Moving Average combines six sequential EMAs using a generalized DEMA formula parameterized by a volume factor (`vFactor`). The volume factor controls the trade-off between smoothness and responsiveness: lower values produce a smoother but slower line, while higher values increase responsiveness at the cost of overshoot. T3 is designed to reduce the two main weaknesses of traditional moving averages — lag and overshoot — making it a popular choice for professional-grade charting overlays.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="5">
+  Number of periods (`N`) for each EMA smoothing pass. Must be greater than 0 and is usually less than 63. Default is `5`.
+</ParamField>
+
+<ParamField path="volumeFactor" type="double" default="0.7">
+  Size of the volume factor. Must be greater than 0 and is usually less than 2. Default is `0.7`.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `6×(N-1)+100` periods of quotes to cover warmup and convergence. For better precision, provide at least `6×(N-1)+250` data points prior to your intended start date.
+
+<Warning>
+  The first `6×(N-1)+250` periods will have convergence-related precision errors that can reach ~5% deviation in earlier values. Use `.RemoveWarmupPeriods(removePeriods)` to discard these.
+</Warning>
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="T3" type="double">
+  T3 Moving Average value.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series with default parameters (lookback=5, volumeFactor=0.7)
+IReadOnlyList<T3Result> results =
+    quotes.ToT3(lookbackPeriods, volumeFactor);
+```
+
+## Streaming
+
+Use `T3List` for incremental calculations without a hub:
+
+```csharp
+T3List t3List = new(lookbackPeriods, volumeFactor);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    t3List.Add(quote);
+}
+
+// based on ICollection<T3Result>
+IReadOnlyList<T3Result> results = t3List;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+T3Hub observer = quoteHub.ToT3Hub(lookbackPeriods, volumeFactor);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<T3Result> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+T3 can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToT3(lookbackPeriods, volumeFactor);
+```
+
+T3 results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed T3 output into RSI
+var results = quotes
+    .ToT3(lookbackPeriods, volumeFactor)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="TEMA" href="/indicators/moving-averages/tema">
+    Triple Exponential Moving Average — three-pass EMA smoothing
+  </Card>
+  <Card title="DEMA" href="/indicators/moving-averages/dema">
+    Double Exponential Moving Average — two-pass EMA smoothing
+  </Card>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — single-pass foundation
+  </Card>
+</Columns>

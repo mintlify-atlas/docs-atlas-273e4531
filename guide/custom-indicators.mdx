@@ -1,0 +1,354 @@
+---
+title: Creating custom indicators for Stock Indicators
+description: Build custom technical indicators that chain with built-in indicators using the IReusable interface and Stock Indicators for .NET extension method patterns.
+---
+
+# Creating custom indicators
+
+The library is designed as a foundation you can extend. By following a few conventions — the `IReusable` interface, `ThrowIfNull()` validation, and the `To{Name}` extension-method naming pattern — your custom indicator will behave exactly like a built-in one: chainable, style-agnostic, and discoverable.
+
+<Tip>
+  Complete working examples are in the [CustomIndicatorsLibrary](https://github.com/DaveSkender/Stock.Indicators/tree/main/docs/examples/CustomIndicatorsLibrary) and [CustomIndicatorsUsage](https://github.com/DaveSkender/Stock.Indicators/tree/main/docs/examples/CustomIndicatorsUsage) projects on GitHub.
+</Tip>
+
+## Building an ATR-weighted moving average
+
+The following walkthrough builds `AtrWma` — an ATR-weighted moving average — as a concrete example. Adapt the pattern for any algorithm you need.
+
+<Steps>
+  <Step title="Create the result class">
+    Define a `record` class for your indicator's output. Implementing `IReusable` is what makes the result chainable — any indicator that accepts `IReadOnlyList<IReusable>` can consume it downstream.
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    namespace Custom.Indicators;
+
+    public record AtrWmaResult : IReusable
+    {
+        public DateTime Timestamp { get; init; }
+        public double?  AtrWma    { get; init; }
+
+        // IReusable.Value exposes AtrWma for chaining;
+        // Null2NaN() converts null to double.NaN internally.
+        double IReusable.Value => AtrWma.Null2NaN();
+    }
+    ```
+
+    <Note>
+      Use `record` (not `class`) to get value-based equality for free. The streaming hub infrastructure requires value-based equality on quote and result types.
+    </Note>
+  </Step>
+
+  <Step title="Create the static extension method">
+    Place your algorithm in a `static` class with a `public static` extension method. The parameter must be `this IReadOnlyList<IQuote> quotes` so callers can chain from any `IQuote` list.
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    namespace Custom.Indicators;
+
+    public static class CustomIndicators
+    {
+        /// <summary>
+        /// ATR-weighted moving average.
+        /// </summary>
+        /// <param name="quotes">Historical quotes (required)</param>
+        /// <param name="lookbackPeriods">Lookback period (default 10)</param>
+        /// <returns>Time series of <see cref="AtrWmaResult"/></returns>
+        public static IReadOnlyList<AtrWmaResult> ToAtrWma(
+            this IReadOnlyList<IQuote> quotes,
+            int lookbackPeriods = 10)
+        {
+            // validate
+            quotes.ThrowIfNull();
+
+            if (lookbackPeriods <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(lookbackPeriods),
+                    lookbackPeriods,
+                    "Lookback periods must be greater than 0.");
+            }
+
+            // sort quotes chronologically
+            List<IQuote> quotesList = quotes.ToSortedList();
+
+            // return empty list when insufficient data
+            if (quotesList.Count < lookbackPeriods)
+            {
+                return [];
+            }
+
+            // get ATR prerequisite
+            IReadOnlyList<AtrResult> atrResults
+                = quotesList.ToAtr(lookbackPeriods);
+
+            // calculate
+            List<AtrWmaResult> results = new(quotesList.Count);
+
+            for (int i = 0; i < quotesList.Count; i++)
+            {
+                IQuote q = quotesList[i];
+
+                AtrWmaResult r = new() { Timestamp = q.Timestamp };
+
+                if (i >= lookbackPeriods - 1)
+                {
+                    double sumWma = 0;
+                    double sumAtr = 0;
+
+                    for (int p = i - lookbackPeriods + 1; p <= i; p++)
+                    {
+                        double close = (double)quotesList[p].Close;
+                        double? atr  = atrResults[p].Atr;
+
+                        if (atr.HasValue)
+                        {
+                            sumWma += atr.Value * close;
+                            sumAtr += atr.Value;
+                        }
+                    }
+
+                    r = r with
+                    {
+                        AtrWma = sumAtr != 0 ? sumWma / sumAtr : null
+                    };
+                }
+
+                results.Add(r);
+            }
+
+            return results;
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Validate inputs">
+    The three validation steps shown above are the standard pattern used throughout the library:
+
+    | Call | Purpose |
+    | ---- | ------- |
+    | `quotes.ThrowIfNull()` | Throws `ArgumentNullException` if the list is null |
+    | Parameter range check | Throws `ArgumentOutOfRangeException` for invalid values |
+    | `quotes.ToSortedList()` | Returns a chronologically sorted `List<IQuote>` |
+
+    Always validate before accessing `quotesList.Count` to avoid misleading errors.
+  </Step>
+
+  <Step title="Use your custom indicator">
+    Add `using Custom.Indicators;` alongside `using Skender.Stock.Indicators;` and call your method like any built-in indicator.
+
+    ```csharp
+    using Skender.Stock.Indicators;
+    using Custom.Indicators;
+
+    IReadOnlyList<Quote> quotes = GetQuotesFromFeed("MSFT");
+
+    // calculate custom indicator
+    IReadOnlyList<AtrWmaResult> results = quotes.ToAtrWma(10);
+
+    foreach (AtrWmaResult r in results)
+    {
+        Console.WriteLine(
+            $"ATR WMA on {r.Timestamp:d} was {r.AtrWma:N4}");
+    }
+    ```
+  </Step>
+</Steps>
+
+## Advanced: making your indicator chainable
+
+Because `AtrWmaResult` implements `IReusable`, you can immediately chain from it:
+
+```csharp
+// RSI of your custom ATR-WMA
+IReadOnlyList<RsiResult> rsiOfAtrWma = quotes
+    .ToAtrWma(10)
+    .ToRsi(14);
+
+// Slope of your custom ATR-WMA
+IReadOnlyList<SlopeResult> slope = quotes
+    .ToAtrWma(10)
+    .ToSlope(20);
+```
+
+No additional code is required — `IReusable` is the only contract the downstream indicators need.
+
+## Advanced: BufferList and StreamHub styles
+
+If you need your custom indicator to work in the incremental or real-time styles, you follow the same structural pattern the library uses internally.
+
+<Tabs>
+  <Tab title="BufferList style">
+    A BufferList maintains rolling state so each new quote triggers an O(1) or O(log n) update rather than a full recalculation.
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    namespace Custom.Indicators;
+
+    public class AtrWmaList : BufferList<AtrWmaResult>
+    {
+        private readonly int _lookbackPeriods;
+        private readonly AtrList _atrList;
+
+        public AtrWmaList(int lookbackPeriods = 10)
+            : base(lookbackPeriods)
+        {
+            _lookbackPeriods = lookbackPeriods;
+            _atrList = new AtrList(lookbackPeriods);
+        }
+
+        public void Add(IQuote quote)
+        {
+            _atrList.Add(quote);
+            Increment(quote);
+        }
+
+        protected override AtrWmaResult ToIndicator(
+            IQuote quote, int? indexHint)
+        {
+            int i = indexHint ?? ProviderCache.Count - 1;
+
+            AtrWmaResult r = new() { Timestamp = quote.Timestamp };
+
+            if (i >= _lookbackPeriods - 1)
+            {
+                double sumWma = 0;
+                double sumAtr = 0;
+
+                for (int p = i - _lookbackPeriods + 1; p <= i; p++)
+                {
+                    double close = (double)ProviderCache[p].Close;
+                    double? atr  = _atrList[p].Atr;
+
+                    if (atr.HasValue)
+                    {
+                        sumWma += atr.Value * close;
+                        sumAtr += atr.Value;
+                    }
+                }
+
+                r = r with
+                {
+                    AtrWma = sumAtr != 0 ? sumWma / sumAtr : null
+                };
+            }
+
+            return r;
+        }
+    }
+    ```
+
+    Usage:
+
+    ```csharp
+    AtrWmaList atrWmaList = new(10)
+    {
+        MaxListSize = 1000   // keep last 1000 results
+    };
+
+    foreach (Quote quote in quotes)
+    {
+        atrWmaList.Add(quote);
+
+        if (atrWmaList.Count > 0)
+        {
+            AtrWmaResult latest = atrWmaList[^1];
+            Console.WriteLine($"{latest.Timestamp:d}: {latest.AtrWma:N4}");
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="StreamHub style">
+    A StreamHub integrates with the observable pipeline, automatically propagating updates to all downstream hubs when a new quote arrives.
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    namespace Custom.Indicators;
+
+    public class AtrWmaHub
+        : ChainHub<IQuote, AtrWmaResult>
+    {
+        private readonly int _lookbackPeriods;
+
+        public AtrWmaHub(
+            IChainProvider<IQuote> provider,
+            int lookbackPeriods = 10)
+            : base(provider)
+        {
+            _lookbackPeriods = lookbackPeriods;
+            Initialize();
+        }
+
+        protected override AtrWmaResult ToIndicator(
+            IQuote item, int? indexHint)
+        {
+            // compute using ProviderCache (the upstream quote cache)
+            int i = indexHint ?? ProviderCache.Count - 1;
+            return Calculate(i);
+        }
+
+        private AtrWmaResult Calculate(int i)
+        {
+            // implementation mirrors the Series style logic
+            // ...
+            return new AtrWmaResult
+            {
+                Timestamp = ProviderCache[i].Timestamp
+            };
+        }
+    }
+
+    // extension method to match library conventions
+    public static class AtrWmaExtensions
+    {
+        public static AtrWmaHub ToAtrWmaHub(
+            this QuoteHub provider,
+            int lookbackPeriods = 10)
+            => new(provider, lookbackPeriods);
+    }
+    ```
+
+    Usage:
+
+    ```csharp
+    QuoteHub quoteHub = new();
+    AtrWmaHub atrWmaHub = quoteHub.ToAtrWmaHub(10);
+
+    quoteHub.Add(newQuote);   // AtrWmaHub updates automatically
+    ```
+  </Tab>
+</Tabs>
+
+## Best practices
+
+<CardGroup cols={2}>
+  <Card title="Validate all inputs" icon="shield-check">
+    Call `quotes.ThrowIfNull()` first, then validate every numeric parameter with `ArgumentOutOfRangeException` before touching any data.
+  </Card>
+  <Card title="Implement IReusable" icon="link">
+    Add `IReusable` to your result record so downstream indicators can consume your output without extra glue code.
+  </Card>
+  <Card title="Use the To{Name} convention" icon="code">
+    Name your extension method `ToAtrWma()`, not `CalculateAtrWma()` or `GetAtrWma()`. Consistent naming makes the fluent chain readable.
+  </Card>
+  <Card title="Sort before iterating" icon="arrows-up-down">
+    Call `quotes.ToSortedList()` at the top of every Series-style method. Never assume the caller has provided sorted data.
+  </Card>
+  <Card title="Handle insufficient data" icon="triangle-alert">
+    Return an empty list (`return [];`) when `quotesList.Count < lookbackPeriods`. Never throw for insufficient data — let callers handle empty results.
+  </Card>
+  <Card title="Document with XML comments" icon="file-text">
+    Add `<summary>`, `<param>`, and `<returns>` XML comments. They appear in IDE tooltips and keep the indicator discoverable.
+  </Card>
+</CardGroup>
+
+## See also
+
+- [Chaining indicators](/guide/chaining) — how `IReusable` connects indicators
+- [Performance](/guide/performance) — benchmark guidance and optimization tips
+- [Utilities and helpers](/utilities/) — `ThrowIfNull`, `ToSortedList`, `RemoveWarmupPeriods`, and more

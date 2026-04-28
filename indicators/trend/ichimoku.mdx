@@ -1,0 +1,158 @@
+---
+title: "Ichimoku Cloud — Trend, Support and Momentum Lines"
+description: "Calculate Ichimoku Cloud (Kinkō Hyō) support, resistance, momentum, and trend direction with TenkanSen, KijunSen, and Senkou spans in .NET."
+---
+
+Created by Goichi Hosoda, Ichimoku Cloud — formally known as Ichimoku Kinkō Hyō — is a comprehensive indicator system that plots support and resistance, momentum, and trend direction simultaneously on a single chart. It uses five lines derived from midpoints of price ranges over different periods, and projects two of them forward (the "cloud") to give a visual picture of future support and resistance zones.
+
+## Parameters
+
+<ParamField path="tenkanPeriods" type="int" default="9">
+  Number of periods (`T`) for the Tenkan-sen (conversion line) midpoint. Must be greater than 0.
+</ParamField>
+
+<ParamField path="kijunPeriods" type="int" default="26">
+  Number of periods (`K`) for the Kijun-sen (base line) midpoint. Must be greater than 0.
+</ParamField>
+
+<ParamField path="senkouBPeriods" type="int" default="52">
+  Number of periods (`S`) for the Senkou Span B (leading span B) midpoint. Must be greater than `kijunPeriods`.
+</ParamField>
+
+<ParamField path="offsetPeriods" type="int">
+  Optional. Shifts both Senkou and Chikou spans by this many periods. Must be non-negative. Defaults to `kijunPeriods`.
+</ParamField>
+
+<ParamField path="senkouOffset" type="int">
+  Optional. Periods to offset Senkou span only. Must be non-negative. Defaults to `kijunPeriods`. Use when different offsets are needed for Senkou and Chikou.
+</ParamField>
+
+<ParamField path="chikouOffset" type="int">
+  Optional. Periods to offset Chikou span only. Must be non-negative. Defaults to `kijunPeriods`. Use when different offsets are needed for Senkou and Chikou.
+</ParamField>
+
+<Note>When customizing offsets with `senkouOffset` and `chikouOffset`, all parameter arguments must be specified explicitly.</Note>
+
+## Result fields
+
+Each element in the returned series is an `IchimokuResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="TenkanSen" type="double">
+  Conversion line (signal line). The midpoint of the highest high and lowest low over `T` periods.
+</ResponseField>
+
+<ResponseField name="KijunSen" type="double">
+  Base line. The midpoint of the highest high and lowest low over `K` periods.
+</ResponseField>
+
+<ResponseField name="SenkouSpanA" type="double">
+  Leading Span A. The midpoint of TenkanSen and KijunSen, plotted `offsetPeriods` forward.
+</ResponseField>
+
+<ResponseField name="SenkouSpanB" type="double">
+  Leading Span B. The midpoint of the highest high and lowest low over `S` periods, plotted `offsetPeriods` forward.
+</ResponseField>
+
+<ResponseField name="ChikouSpan" type="double">
+  Lagging span. The current closing price shifted back `offsetPeriods` into the past.
+</ResponseField>
+
+## Usage
+
+<Tabs>
+  <Tab title="Standard">
+    ```csharp
+    IReadOnlyList<IchimokuResult> results =
+      quotes.ToIchimoku(tenkanPeriods, kijunPeriods, senkouBPeriods);
+    ```
+  </Tab>
+  <Tab title="Custom offset">
+    ```csharp
+    // single offset for both Senkou and Chikou
+    IReadOnlyList<IchimokuResult> results =
+      quotes.ToIchimoku(tenkanPeriods, kijunPeriods, senkouBPeriods, offsetPeriods);
+    ```
+  </Tab>
+  <Tab title="Separate offsets">
+    ```csharp
+    // different offsets for Senkou and Chikou
+    IReadOnlyList<IchimokuResult> results =
+      quotes.ToIchimoku(tenkanPeriods, kijunPeriods, senkouBPeriods, senkouOffset, chikouOffset);
+    ```
+  </Tab>
+</Tabs>
+
+`TenkanSen` is the primary value used when chaining Ichimoku into downstream indicators:
+
+```csharp
+// chaining example (streaming)
+var emaHub = quotes
+    .ToIchimokuHub()
+    .ToEmaHub(14);
+```
+
+## Streaming
+
+Use `IchimokuList` for incremental buffer-style calculations:
+
+```csharp
+IchimokuList ichimokuList = new(tenkanPeriods, kijunPeriods, senkouBPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  ichimokuList.Add(quote);
+}
+
+// based on ICollection<IchimokuResult>
+IReadOnlyList<IchimokuResult> results = ichimokuList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+IchimokuHub observer = quoteHub.ToIchimokuHub(tenkanPeriods, kijunPeriods, senkouBPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<IchimokuResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **Price above the cloud**: bullish trend; the cloud acts as support.
+- **Price below the cloud**: bearish trend; the cloud acts as resistance.
+- **Price inside the cloud**: transitional zone — avoid strong directional bets.
+- **TenkanSen crossing above KijunSen**: bullish signal (golden cross equivalent).
+- **TenkanSen crossing below KijunSen**: bearish signal (dead cross equivalent).
+- **ChikouSpan above price from N periods ago**: bullish confirmation.
+- **Thicker cloud**: stronger support/resistance; thinner cloud indicates weaker zones.
+
+<Tip>The cloud (Kumo) formed by Senkou Span A and B provides forward-looking support and resistance at a glance. A "cloud twist" — where Span A and B cross — often signals an upcoming change in trend.</Tip>
+
+## Minimum history
+
+You must have at least the greater of `T`, `K`, `S`, and the offset periods to cover warmup. Given the leading and lagging nature of the indicator, notably more historical data is recommended. The first `T-1`, `K-1`, and `S-1` periods will have various `null` values.
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="ADX" href="/indicators/trend/adx" icon="chart-bar">
+    Quantify trend strength alongside Ichimoku's directional view.
+  </Card>
+  <Card title="SuperTrend" href="/indicators/trend/super-trend" icon="arrow-trend-up">
+    ATR-based trend direction with cleaner buy/sell signals.
+  </Card>
+  <Card title="VWAP" href="/indicators/trend/vwap" icon="scale-balanced">
+    Volume-weighted average price for intraday context.
+  </Card>
+</CardGroup>

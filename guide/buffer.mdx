@@ -1,0 +1,189 @@
+---
+title: "Buffer List Style Guide | Stock Indicators"
+description: "Learn how to use the BufferList incremental style in Stock Indicators for .NET for efficient quote-by-quote processing with automatic buffer management."
+---
+
+# Buffer list style
+
+Buffer list style provides efficient incremental processing for growing datasets. Instead of recalculating the full series on every new quote, a buffer list maintains its own internal state and produces the next result the moment a new quote is added. There is no hub infrastructure to set up — just instantiate, add quotes, and read results.
+
+## When to use buffer lists
+
+**Ideal for:**
+
+- Building up historical data incrementally
+- Processing data feeds where quotes arrive sequentially
+- Self-managed incremental calculations
+- Scenarios without multi-indicator coordination needs
+- Memory-efficient processing with auto-pruning
+
+**Not ideal for:**
+
+- Complete historical datasets — use [Series batch](/guide/batch) instead
+- Multiple indicators that must stay synchronized on every quote — use [Stream hubs](/guide/stream)
+- One-time calculations — use [Series batch](/guide/batch)
+
+## Basic usage
+
+Instantiate a buffer list with the desired lookback period, then call `Add()` for each incoming quote:
+
+```csharp
+using Skender.Stock.Indicators;
+
+// create buffer list with lookback period
+SmaList smaList = new(lookbackPeriods: 20);
+
+// add quotes incrementally (e.g., from a data feed)
+foreach (Quote quote in quotes)
+{
+    smaList.Add(quote);
+
+    // safely get latest result
+    if (smaList.Count > 0)
+    {
+        SmaResult r = smaList[^1];
+
+        // use result (SMA is null during warmup period)
+        if (r.Sma is not null)
+        {
+            Console.WriteLine($"{r.Timestamp:d}: SMA = {r.Sma:N2}");
+        }
+    }
+}
+```
+
+<Warning>
+  Using `smaList[^1]` on an empty list throws `IndexOutOfRangeException`. Always check `Count > 0` first, or use `smaList.LastOrDefault()` which returns `null` when empty.
+</Warning>
+
+## Key features
+
+### `ICollection` interface
+
+Buffer lists implement `ICollection<TResult>`, giving you standard collection semantics including single-item and batch `Add()`, `Count`, and enumeration:
+
+```csharp
+SmaList smaList = new(20);
+
+// add individual quotes
+smaList.Add(quote);
+
+// or add batches
+smaList.Add(quoteList);
+
+// standard collection operations
+int count = smaList.Count;
+bool isEmpty = smaList.Count == 0;
+```
+
+### Automatic buffer management
+
+The buffer list handles all internal state so you do not have to:
+
+- Maintains the lookback window internally — no manual ring-buffer management
+- No external state management required
+- Incremental updates are typically O(1) or O(log n)
+
+### Memory management with `MaxListSize`
+
+Control how many result records the list retains with the `MaxListSize` property:
+
+```csharp
+SmaList smaList = new(20)
+{
+    MaxListSize = 1000  // keep only last 1000 results
+};
+```
+
+When the list exceeds `MaxListSize`, the oldest results are pruned automatically using FIFO eviction. The default limit is 100,000 elements.
+
+## Chaining indicators
+
+Chain buffer lists to build derived indicators. Populate the upstream list first, then feed its results into the downstream list:
+
+```csharp
+// create OBV buffer list
+ObvList obvList = new();
+
+// add quotes to OBV
+foreach (var quote in quotes)
+{
+    obvList.Add(quote);
+}
+
+// chain RSI from OBV results
+RsiList rsiList = new(14);
+foreach (var obvResult in obvList)
+{
+    rsiList.Add(obvResult);
+}
+
+// get latest RSI of OBV
+if (rsiList.Count > 0)
+{
+    RsiResult latest = rsiList[^1];
+}
+```
+
+<Tip>
+  For fully automatic cascading updates where a single `Add()` propagates through all chained indicators simultaneously, consider [Stream hubs](/guide/stream).
+</Tip>
+
+## Usage patterns
+
+<Tabs>
+  <Tab title="Simulating a stream">
+    ```csharp
+    SmaList smaList = new(20);
+
+    foreach (var quote in streamingQuotes)
+    {
+        // add new quote
+        smaList.Add(quote);
+
+        // list auto-adds incremental SMA value
+        if (smaList.Count > 0)
+        {
+            SmaResult latest = smaList[^1];
+            Console.WriteLine($"{latest.Timestamp:d}: SMA = {latest.Sma:N2}");
+        }
+    }
+    ```
+  </Tab>
+  <Tab title="Batch seed then incremental">
+    ```csharp
+    SmaList smaList = new(20);
+
+    // add initial batch to seed the warmup period
+    smaList.Add(historicalQuotes);
+
+    // then add new quotes incrementally
+    while (newQuote = GetNextQuote())
+    {
+        smaList.Add(newQuote);
+        if (smaList.Count > 0)
+        {
+            ProcessLatestResult(smaList[^1]);
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Performance characteristics
+
+- **Overhead:** ~10–20% slower than batch style for equivalent datasets
+- **Memory:** Maintains internal buffers for lookback periods; `MaxListSize` caps total memory
+- **Latency:** Optimized for per-quote updates, typically O(1) or O(log n)
+- **Thread safety:** Not thread-safe — synchronize external access if multiple threads share the same instance
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Series batch style" icon="layer-group" href="/guide/batch">
+    For one-time bulk conversions of complete historical datasets.
+  </Card>
+  <Card title="Stream hub style" icon="bolt" href="/guide/stream">
+    For coordinated real-time updates across multiple indicators.
+  </Card>
+</CardGroup>

@@ -1,0 +1,122 @@
+---
+title: "Rate of Change (ROC) Momentum Oscillator"
+description: "Calculate Rate of Change (ROC) to measure percent price change over a lookback period. Returns both the percentage ROC and the raw Momentum value."
+---
+
+Rate of Change (ROC), also called the Momentum Oscillator, measures the percentage difference between the current price and the price `N` periods ago. A companion `Momentum` value representing the raw (unscaled) price difference is also returned. ROC is one of the simplest momentum indicators: positive values signal upward momentum, negative values signal downward momentum, and zero-line crossovers mark momentum shifts. A Rate of Change with Bands (ROC-WB) variant by Vitali Apirine is also available in the library.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods `N` to look back. Must be greater than 0.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<RocResult> results = quotes.ToRoc(lookbackPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Roc" type="double | null">
+  Percent change in price over `N` periods (expressed as a percentage, not a decimal). `null` for the first `N` periods.
+</ResponseField>
+
+<ResponseField name="Momentum" type="double | null">
+  Raw price change over `N` periods: `Close[i] − Close[i−N]`.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<RocResult> results = quotes.ToRoc(lookbackPeriods);
+```
+
+ROC can be calculated on any chain-enabled source:
+
+```csharp
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToRoc(12);
+```
+
+Chain further indicators on the `Roc` output value:
+
+```csharp
+// smooth ROC with an EMA
+var results = quotes
+    .ToRoc(12)
+    .ToEma(5);
+```
+
+## Streaming
+
+Use `RocList` for incremental updates without a hub:
+
+```csharp
+RocList rocList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  rocList.Add(quote);
+}
+
+// based on ICollection<RocResult>
+IReadOnlyList<RocResult> results = rocList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+RocHub observer = quoteHub.ToRocHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<RocResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| ROC value | Signal |
+|-----------|--------|
+| Positive and rising | Accelerating upward momentum |
+| Positive and falling | Decelerating upward momentum |
+| Crosses above zero | Momentum turning bullish |
+| Crosses below zero | Momentum turning bearish |
+| Negative and falling | Accelerating downward momentum |
+
+ROC divergence — where price sets a new high (or low) but ROC does not — is a common precursor to a reversal. Because ROC is unbounded, the magnitude of a reading can be compared across time to assess whether current momentum is historically extreme.
+
+<Tip>
+Smoothing the ROC series with an EMA (e.g., via `.ToEma(9)`) reduces noise and makes zero-line crossover signals more reliable.
+</Tip>
+
+## Minimum history
+
+You must supply at least `N+1` periods of quotes to cover the warmup period.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="MACD" href="/indicators/oscillators/macd">
+    Convergence/divergence of two EMAs.
+  </Card>
+  <Card title="True Strength Index" href="/indicators/oscillators/tsi">
+    Double-smoothed price-change momentum.
+  </Card>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Bounded gain/loss momentum (0–100 scale).
+  </Card>
+  <Card title="Ultimate Oscillator" href="/indicators/oscillators/ultimate">
+    Multi-timeframe buying pressure oscillator.
+  </Card>
+</CardGroup>

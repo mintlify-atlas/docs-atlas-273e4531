@@ -1,0 +1,102 @@
+---
+title: "HMA: Hull Moving Average indicator for Stock.Indicators"
+description: "The HMA, created by Alan Hull, uses weighted averages to reduce lag while maintaining smoothness, making it faster than EMA or SMA of the same period."
+---
+
+Created by Alan Hull, the Hull Moving Average is a modified weighted moving average designed to be both smooth and responsive. It achieves this by combining two WMAs of different periods with a square-root-period WMA applied to the difference, which nearly eliminates lag. Traders use HMA as a trend-following indicator when they need cleaner signals than traditional moving averages provide without introducing excessive delay.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the moving average. Must be greater than 1.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N + ⌊√N⌋ - 1` periods of quotes to cover the warmup period.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Hma" type="double">
+  Hull moving average value. Returns `null` for the first `N + ⌊√N⌋ - 1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series (Close price by default)
+IReadOnlyList<HmaResult> results =
+    quotes.ToHma(lookbackPeriods);
+```
+
+## Streaming
+
+Use `HmaList` for incremental calculations without a hub:
+
+```csharp
+HmaList hmaList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    hmaList.Add(quote);
+}
+
+// based on ICollection<HmaResult>
+IReadOnlyList<HmaResult> results = hmaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+HmaHub observer = quoteHub.ToHmaHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<HmaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+HMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToHma(lookbackPeriods);
+```
+
+HMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed HMA output into RSI
+var results = quotes
+    .ToHma(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="WMA" href="/indicators/moving-averages/wma">
+    Weighted Moving Average — the linear-weight building block of HMA
+  </Card>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — popular lag-reducing alternative
+  </Card>
+  <Card title="ALMA" href="/indicators/moving-averages/alma">
+    Arnaud Legoux Moving Average — Gaussian-weighted smooth average
+  </Card>
+</Columns>

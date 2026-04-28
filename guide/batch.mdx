@@ -1,0 +1,130 @@
+---
+title: "Series Batch Style Guide | Stock Indicators"
+description: "Learn how to use the Series batch style in Stock Indicators for .NET for fast, one-time bulk conversions of complete historical quote datasets."
+---
+
+# Series batch style
+
+Series batch style is the fastest and simplest way to calculate indicators from complete historical datasets. You supply a full collection of quotes, call the indicator extension method, and receive the entire result series back as an immutable list — no state to manage and no ongoing setup required.
+
+## When to use batch style
+
+**Ideal for:**
+
+- Complete historical datasets ready for conversion
+- One-time indicator calculations
+- Backtesting and historical analysis
+- Performance-critical batch processing
+- Simplest implementation with minimal code
+
+**Not ideal for:**
+
+- Real-time or streaming data — use [Stream hubs](/guide/stream)
+- Incremental quote-by-quote processing — use [Buffer lists](/guide/buffer)
+- Live data feeds requiring continuous updates
+
+## Basic usage
+
+All Series-style indicators return a complete result set for the entire quote history you provide. Results are typed as `IReadOnlyList<TResult>` — immutable and safe to read from multiple threads.
+
+```csharp
+using Skender.Stock.Indicators;
+
+// fetch historical quotes from your data source
+IReadOnlyList<Quote> quotes = GetQuotesFromFeed("MSFT");
+
+// calculate 20-period SMA
+IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+
+// iterate through all results
+foreach (SmaResult r in results)
+{
+    Console.WriteLine($"SMA on {r.Timestamp:d} was ${r.Sma:N4}");
+}
+```
+
+<Note>
+  Result values are `null` during the warmup period before the indicator has enough data to produce a valid output. Always null-check numeric result properties before using them.
+</Note>
+
+## Chaining indicators
+
+Build sophisticated multi-step analysis by chaining indicators together. Each `To*` extension method accepts the prior result list, so you can chain calls in a fluent style:
+
+```csharp
+// calculate RSI of On-Balance Volume
+IReadOnlyList<RsiResult> results = quotes
+    .ToObv()
+    .ToRsi(14);
+
+// or use an alternate candle price as input
+IReadOnlyList<EmaResult> results = quotes
+    .Use(CandlePart.HL2)
+    .ToEma(20);
+```
+
+<Tip>
+  `CandlePart` lets you select which OHLCV component feeds into the next indicator — useful for price-transformed inputs like `HL2` (high + low ÷ 2) or `HLC3`.
+</Tip>
+
+## Processing results
+
+### Find a specific date
+
+Use LINQ `FirstOrDefault()` to look up the result for a specific timestamp. The `Find()` utility was removed in v3.
+
+```csharp
+IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+DateTime lookupDate = DateTime.Parse("2024-01-15");
+
+// exact timestamp match
+SmaResult? result = results.FirstOrDefault(r => r.Timestamp == lookupDate);
+
+// date-only match (ignores time)
+SmaResult? result2 = results.FirstOrDefault(r => r.Timestamp.Date == lookupDate.Date);
+```
+
+### Remove warmup periods
+
+Strip leading results that fall inside the warmup window before the indicator is mathematically stable:
+
+```csharp
+// auto-remove the recommended warmup amount
+IReadOnlyList<AdxResult> results = quotes
+    .ToAdx(14)
+    .RemoveWarmupPeriods();
+
+// or specify a custom number to remove
+IReadOnlyList<AdxResult> results = quotes
+    .ToAdx(14)
+    .RemoveWarmupPeriods(100);
+```
+
+### Condense results
+
+Remove result records that carry no signal (useful for candlestick pattern indicators):
+
+```csharp
+// only return records with signals
+IReadOnlyList<CandleResult> signals = quotes
+    .ToMarubozu()
+    .Condense();
+```
+
+## Performance characteristics
+
+- **Speed:** Fastest indicator style — baseline performance
+- **Memory:** Minimal overhead; returns `IReadOnlyList<TResult>`
+- **Thread safety:** Results are immutable and safe to read from multiple threads
+- **Scalability:** Single calculation per dataset; not designed for ongoing updates
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Buffer list style" icon="list" href="/guide/buffer">
+    For incremental quote-by-quote processing without hub infrastructure.
+  </Card>
+  <Card title="Stream hub style" icon="bolt" href="/guide/stream">
+    For real-time feeds requiring coordinated multi-indicator updates.
+  </Card>
+</CardGroup>

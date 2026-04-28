@@ -1,0 +1,107 @@
+---
+title: "Williams %R Momentum Oscillator Indicator"
+description: "Calculate Williams %R to measure price position within its recent high-low range on a −100 to 0 scale. Equivalent to fast stochastic, inverted."
+---
+
+Williams %R, developed by Larry Williams, is a momentum oscillator that positions the current closing price within the high-low range of the lookback period on a scale of −100 to 0. A reading near 0 indicates the close is near the top of the range (overbought), while a reading near −100 indicates the close is near the bottom (oversold). Mathematically it is identical to the fast variant of the Stochastic Oscillator, simply inverted and rescaled.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods `N` in the lookback window. Must be greater than 0. Default is **14**.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<WilliamsResult> results = quotes.ToWilliamsR(lookbackPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="WilliamsR" type="double | null">
+  Williams %R oscillator value over the prior `N` periods. `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<WilliamsResult> results = quotes.ToWilliamsR(lookbackPeriods);
+```
+
+Chain further indicators on the `WilliamsR` output value:
+
+```csharp
+var results = quotes
+    .ToWilliamsR(14)
+    .ToSlope(5);
+```
+
+<Note>
+Williams %R must be generated directly from `quotes`. It cannot be chained from the output of another indicator.
+</Note>
+
+## Streaming
+
+Use `WilliamsRList` for incremental updates without a hub:
+
+```csharp
+WilliamsRList williamsRList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  williamsRList.Add(quote);
+}
+
+// based on ICollection<WilliamsRResult>
+IReadOnlyList<WilliamsRResult> results = williamsRList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+WilliamsRHub observer = quoteHub.ToWilliamsRHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<WilliamsRResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| %R range | Signal |
+|----------|--------|
+| −20 to 0 | Overbought — close near the top of the range |
+| −80 to −20 | Neutral range |
+| −100 to −80 | Oversold — close near the bottom of the range |
+
+A reading rising from below −80 back toward −50 is a traditional oversold exit signal. A reading falling from above −20 back toward −50 is a traditional overbought exit signal. Because Williams %R is mathematically equivalent to the fast Stochastic %K (inverted), the two indicators generate identical buy/sell signals — the choice between them is purely a matter of convention.
+
+## Minimum history
+
+You must supply at least `N` periods of quotes to cover the warmup period.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Stochastic Oscillator" href="/indicators/oscillators/stoch">
+    Equivalent fast stochastic on a 0–100 scale.
+  </Card>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Gain/loss momentum bounded to 0–100.
+  </Card>
+  <Card title="CCI" href="/indicators/oscillators/cci">
+    Unbounded deviation-from-mean oscillator.
+  </Card>
+  <Card title="Stochastic RSI" href="/indicators/oscillators/stoch-rsi">
+    Stochastic applied to RSI values.
+  </Card>
+</CardGroup>

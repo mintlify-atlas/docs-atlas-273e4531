@@ -1,0 +1,122 @@
+---
+title: "Parabolic SAR — Stop, Reverse, and Trend Following"
+description: "Implement Parabolic SAR (stop and reverse) by J. Welles Wilder to track trend direction, spot reversals, and set trailing stops in .NET."
+---
+
+Created by J. Welles Wilder, Parabolic SAR (Stop and Reverse) is a price-time indicator that tracks the current trend direction and signals potential reversals. A series of dots plotted above or below price accelerates toward the price as a trend matures, acting as a trailing stop. When price crosses the SAR dots, the indicator reverses and plots on the other side — signaling a possible trend change and providing a new stop-loss level.
+
+## Parameters
+
+<ParamField path="accelerationStep" type="double" default="0.02">
+  Incremental step size for the Acceleration Factor (AF). Must be greater than 0. Controls how quickly the SAR accelerates toward price.
+</ParamField>
+
+<ParamField path="maxAccelerationFactor" type="double" default="0.2">
+  Maximum Acceleration Factor cap. Must be greater than `accelerationStep`. Limits how aggressively the SAR closes in on price.
+</ParamField>
+
+<ParamField path="initialFactor" type="double">
+  Optional. Initial Acceleration Factor at the start of a new trend. Must be greater than 0 and no larger than `maxAccelerationFactor`. Defaults to `accelerationStep`.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `ParabolicSarResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Sar" type="double">
+  Stop and Reverse value. The trailing stop level for the current trend segment.
+</ResponseField>
+
+<ResponseField name="IsReversal" type="bool">
+  `true` when the current period marks a trend reversal (price crossed the prior SAR level).
+</ResponseField>
+
+## Usage
+
+<Tabs>
+  <Tab title="Standard">
+    ```csharp
+    IReadOnlyList<ParabolicSarResult> results =
+      quotes.ToParabolicSar(accelerationStep, maxAccelerationFactor);
+    ```
+  </Tab>
+  <Tab title="Custom initial factor">
+    ```csharp
+    IReadOnlyList<ParabolicSarResult> results =
+      quotes.ToParabolicSar(accelerationStep, maxAccelerationFactor, initialFactor);
+    ```
+  </Tab>
+</Tabs>
+
+The `Sar` value is chain-enabled for further indicator processing:
+
+```csharp
+// chaining example
+var results = quotes
+    .ToParabolicSar(0.02, 0.2)
+    .ToEma(10);
+```
+
+## Streaming
+
+Use `ParabolicSarList` for incremental buffer-style calculations:
+
+```csharp
+ParabolicSarList psarList = new(accelerationStep, maxAccelerationFactor);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  psarList.Add(quote);
+}
+
+// based on ICollection<ParabolicSarResult>
+IReadOnlyList<ParabolicSarResult> results = psarList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+ParabolicSarHub observer = quoteHub.ToParabolicSarHub(accelerationStep, maxAccelerationFactor);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<ParabolicSarResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **SAR below price**: uptrend is in effect. Use `Sar` as a rising trailing stop for long positions.
+- **SAR above price**: downtrend is in effect. Use `Sar` as a falling trailing stop for short positions.
+- **`IsReversal = true`**: trend has reversed; the SAR switches sides on this bar.
+- **Lower `accelerationStep`** (e.g., 0.01): slower acceleration, SAR stays further from price — fewer but more reliable signals.
+- **Higher `accelerationStep`** (e.g., 0.04): faster acceleration, SAR tracks price tightly — more signals with more whipsaws.
+
+<Tip>Parabolic SAR works best in trending markets. In choppy, sideways conditions it can produce frequent false reversals. Combine it with ADX to confirm that a trend is actually in place before acting on SAR signals.</Tip>
+
+## Minimum history
+
+You must have at least 2 historical quotes to cover the warmup period; however, at least 100 data points are recommended. The initial trend before the first reversal uses an estimated starting direction and those values are excluded from results — provide sufficient history to capture prior reversals before your intended usage date.
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="SuperTrend" href="/indicators/trend/super-trend" icon="arrow-trend-up">
+    ATR-based alternative trend-following and stop indicator.
+  </Card>
+  <Card title="ADX" href="/indicators/trend/adx" icon="chart-bar">
+    Confirm trend strength before relying on SAR signals.
+  </Card>
+  <Card title="Aroon Indicator" href="/indicators/trend/aroon" icon="chart-line">
+    High/low recency-based trend direction indicator.
+  </Card>
+</CardGroup>

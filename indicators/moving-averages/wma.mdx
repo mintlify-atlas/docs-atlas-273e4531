@@ -1,0 +1,102 @@
+---
+title: "WMA: Weighted Moving Average indicator for Stock.Indicators"
+description: "The WMA assigns linearly increasing weights to recent prices, giving the most recent period the highest weight across the lookback window."
+---
+
+The Weighted Moving Average (also called Linear Weighted Moving Average, LWMA) computes a price average where each period receives a weight proportional to its position in the lookback window — the most recent bar carries the highest weight and the oldest carries weight 1. This makes WMA more responsive to recent price changes than a Simple Moving Average, while remaining fully deterministic unlike exponentially smoothed averages. It is commonly used for trend identification and as a component in composite indicators such as the Hull Moving Average.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the lookback window. Must be greater than 0.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N` periods of quotes to cover the warmup period.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Wma" type="double">
+  Weighted moving average value. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series (Close price by default)
+IReadOnlyList<WmaResult> results =
+    quotes.ToWma(lookbackPeriods);
+```
+
+## Streaming
+
+Use `WmaList` for incremental calculations without a hub:
+
+```csharp
+WmaList wmaList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    wmaList.Add(quote);
+}
+
+// based on ICollection<WmaResult>
+IReadOnlyList<WmaResult> results = wmaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+WmaHub observer = quoteHub.ToWmaHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<WmaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+WMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToWma(lookbackPeriods);
+```
+
+WMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed WMA output into RSI
+var results = quotes
+    .ToWma(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="SMA" href="/indicators/moving-averages/sma">
+    Simple Moving Average — equal-weight baseline
+  </Card>
+  <Card title="HMA" href="/indicators/moving-averages/hma">
+    Hull Moving Average — WMA-based indicator with reduced lag
+  </Card>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — exponentially weighted alternative
+  </Card>
+</Columns>

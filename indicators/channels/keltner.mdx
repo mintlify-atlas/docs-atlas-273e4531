@@ -1,0 +1,140 @@
+---
+title: "Keltner Channels: ATR Bands Around EMA"
+description: "Keltner Channels overlay EMA-centered bands scaled by Average True Range for identifying trend direction and volatility-adjusted breakout signals."
+---
+
+Created by Chester W. Keltner, [Keltner Channels](https://en.wikipedia.org/wiki/Keltner_channel) build an upper and lower band by adding and subtracting a multiple of the Average True Range (ATR) from an Exponential Moving Average (EMA) of price. Because ATR adapts to real market volatility and EMA responds quickly to trend changes, the channels serve as a dynamic filter for distinguishing trending moves from consolidation noise. See [STARC Bands](/indicators/channels/starc-bands) for the SMA-based equivalent.
+
+## Parameters
+
+<ParamField path="emaPeriods" type="int" default="20">
+  Number of lookback periods (`E`) for the EMA center line. Must be greater than 1.
+</ParamField>
+
+<ParamField path="multiplier" type="double" default="2">
+  ATR multiplier controlling band width. Must be greater than 0.
+</ParamField>
+
+<ParamField path="atrPeriods" type="int" default="10">
+  Number of lookback periods (`A`) for the Average True Range. Must be greater than 1.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `KeltnerResult` with the following fields.
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date corresponding to the evaluated quote.
+</ResponseField>
+
+<ResponseField name="UpperBand" type="double">
+  Upper band of the Keltner Channel: `EMA + (multiplier × ATR)`.
+</ResponseField>
+
+<ResponseField name="Centerline" type="double">
+  EMA of price over `E` periods.
+</ResponseField>
+
+<ResponseField name="LowerBand" type="double">
+  Lower band of the Keltner Channel: `EMA - (multiplier × ATR)`.
+</ResponseField>
+
+<ResponseField name="Width" type="double">
+  Band width as a fraction of the centerline: `(UpperBand - LowerBand) / Centerline`.
+</ResponseField>
+
+## Usage
+
+Call `ToKeltner()` on any `IEnumerable<TQuote>` to compute the full series in a single batch pass.
+
+```csharp
+IReadOnlyList<KeltnerResult> results =
+    quotes.ToKeltner(emaPeriods, multiplier, atrPeriods);
+```
+
+<Note>
+  Keltner Channels must be calculated directly from `quotes` and cannot be generated from the output of another chain-enabled indicator.
+</Note>
+
+The `Centerline` (EMA) result can be piped to further chain-enabled indicators:
+
+```csharp
+var results = quotes
+    .ToKeltner(20, 2, 10);
+```
+
+See [Chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## Streaming
+
+Use `KeltnerList` for incremental, event-driven processing without a hub:
+
+```csharp
+KeltnerList keltnerList = new(emaPeriods, multiplier, atrPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    keltnerList.Add(quote);
+}
+
+// read as IReadOnlyList<KeltnerResult>
+IReadOnlyList<KeltnerResult> results = keltnerList;
+```
+
+For pub/sub architectures, subscribe an observer to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+KeltnerHub observer =
+    quoteHub.ToKeltnerHub(emaPeriods, multiplier, atrPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<KeltnerResult> results = observer.Results;
+```
+
+<Note>
+  See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for complete streaming guides.
+</Note>
+
+## Interpretation
+
+Keltner Channels are primarily a trend-following and breakout tool:
+
+- **Price consistently above the centerline** indicates an uptrend; consistently below suggests a downtrend.
+- **Close above the upper band** is a classic volatility breakout signal in the direction of the trend.
+- **Close below the lower band** signals a downside breakout.
+- **Price oscillating within the bands** suggests a ranging market — breakout signals inside the range are less reliable.
+- When used alongside Bollinger Bands, a **Bollinger Bands squeeze inside the Keltner Channels** is a high-probability setup for an impending large move.
+
+<Tip>
+  Use a longer `atrPeriods` value relative to `emaPeriods` to make the bands smoother and reduce whipsaws in volatile markets.
+</Tip>
+
+## Minimum history
+
+You must supply at least `2×N` or `N+100` periods of quotes, whichever is more, where `N` is the greater of `emaPeriods` or `atrPeriods`. For the best precision, provide at least `N+250` data points prior to the intended start date.
+
+<Warning>
+  The first `N+250` periods will contain convergence-related precision errors that can be as high as ~5% deviation due to the EMA smoothing warm-up. Use `.RemoveWarmupPeriods()` to trim these values before production use.
+</Warning>
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="STARC Bands" icon="chart-line" href="/indicators/channels/starc-bands">
+    SMA-centered equivalent of Keltner Channels.
+  </Card>
+  <Card title="Bollinger Bands" icon="chart-line" href="/indicators/channels/bollinger-bands">
+    Standard deviation bands around an SMA.
+  </Card>
+  <Card title="Donchian Channels" icon="chart-line" href="/indicators/channels/donchian">
+    Highest-high / lowest-low price channel.
+  </Card>
+  <Card title="Standard Deviation Channels" icon="chart-line" href="/indicators/channels/std-dev-channels">
+    Linear-regression channels with std-dev band widths.
+  </Card>
+</CardGroup>

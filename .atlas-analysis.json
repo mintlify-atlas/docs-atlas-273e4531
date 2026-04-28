@@ -1,24 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Stock Indicators for .NET",
+  "projectType": "sdk-library",
+  "projectName": "Stock Indicators for .NET",
+  "projectDescription": "A C# NuGet library that transforms OHLCV price quotes into 84+ technical indicators with batch, buffer, and streaming APIs for algorithmic trading and financial analysis.",
   "theme": "luma",
-  "colors": {
-    "primary": "#040404",
-    "light": "#dcbe49",
-    "dark": "#a19451"
-  },
-  "favicon": "https://media.brand.dev/1eb5a8ce-86c5-4bc5-a55f-e37145aa3717.svg",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/DaveSkender/Stock.Indicators"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/DaveSkender/Stock.Indicators"
-    }
-  },
+  "primaryColor": "#040404",
+  "lightColor": "#dcbe49",
+  "darkColor": "#a19451",
   "navigation": {
     "tabs": [
       {
@@ -134,5 +121,28 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "84+ battle-tested technical indicators (moving averages, oscillators, channels, volume, candlestick patterns)",
+    "Three indicator styles: Series (batch), BufferList (incremental), and StreamHub (real-time observable)",
+    "Indicator chaining — compute indicators of indicators (e.g., RSI of OBV)",
+    "Custom indicator support via IReusable interface",
+    "Targets .NET 8, 9, and 10 with sub-millisecond per-quote latency",
+    "Custom quote class support via IQuote interface",
+    "Automatic warmup/pruning with RemoveWarmupPeriods utility",
+    "Thread-safe StreamHub with rollback for late-arriving or corrected data"
+  ],
+  "publicApiSurface": [
+    "Quote (IQuote) — OHLCV input model",
+    "IReadOnlyList<TResult> quotes.To{Indicator}(...) — Series batch extension methods",
+    "{Indicator}List — BufferList incremental ICollection classes",
+    "QuoteHub / {Indicator}Hub — StreamHub observable classes",
+    "CandlePart enum — alternate price variants (HL2, HLC3, OHL3, etc.)",
+    "IReusable interface — enables custom chainable indicators",
+    "RemoveWarmupPeriods() — result utility extension",
+    "Find(DateTime) — result lookup utility",
+    "Condense() — candlestick result filter utility",
+    "ToSortedList() / Validate() — quote utility extensions",
+    "IndicatorCatalog — programmatic metadata access for all indicators"
+  ]
 }

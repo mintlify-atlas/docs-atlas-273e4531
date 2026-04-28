@@ -1,0 +1,135 @@
+---
+title: "Beta Coefficient: asset market sensitivity measure"
+description: "Beta measures how strongly one asset responds to market volatility. Upside Beta (Beta+) and Downside Beta (Beta-) by Harry M. Markowitz are also included."
+---
+
+Beta is a statistical measure of how much an individual asset's returns move relative to a market benchmark over a rolling window. A Beta above 1 means the asset tends to amplify market swings; a Beta below 1 means it is more subdued. Upside Beta (Beta+) and Downside Beta (Beta-), popularized by Harry M. Markowitz, split this analysis by the direction of market moves, giving a more nuanced view of asymmetric risk exposure.
+
+## Parameters
+
+<ParamField path="quotesMarket" type="IReadOnlyList<TQuote>" required>
+  Historical quotes for the market benchmark (e.g. a broad index). Used to establish the baseline returns. Must have matching date elements with the evaluation quotes.
+</ParamField>
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the rolling lookback window. Must be greater than 0. A larger period is recommended for a statistically meaningful sample, especially when using Beta+/-.
+</ParamField>
+
+<ParamField path="type" type="BetaType">
+  Type of Beta to calculate. Default is `BetaType.Standard`. See [BetaType options](#betatype-options) below.
+</ParamField>
+
+### BetaType options
+
+| Value | Description |
+|-------|-------------|
+| `Standard` | Standard Beta only. Uses all historical quotes. |
+| `Up` | Upside Beta only. Uses quotes from market up-bars only. |
+| `Down` | Downside Beta only. Uses quotes from market down-bars only. |
+| `All` | Returns Standard, Up, and Down Beta. Required to receive `Ratio` and `Convexity` values. Note: 3× slower to calculate. |
+
+### Minimum history
+
+You must have at least `N` periods of evaluation quotes. Both quote series must have the same matching date elements — an `InvalidQuotesException` is thrown if they do not match.
+
+<Tip>
+  Financial institutions often show a single long-term Beta number. To reproduce that value, use 5 years of monthly bars and set `lookbackPeriods` to 60. Use the [resize quote history](/utilities/quotes) utility to convert higher-frequency bars to monthly.
+
+  Alpha is calculated as `R – Rf – Beta (Rm - Rf)`, where `Rf` is the risk-free rate.
+</Tip>
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Beta" type="double">
+  Standard Beta coefficient. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+<ResponseField name="BetaUp" type="double">
+  Upside Beta (Beta+). Only populated when `type` is `Up` or `All`.
+</ResponseField>
+
+<ResponseField name="BetaDown" type="double">
+  Downside Beta (Beta-). Only populated when `type` is `Down` or `All`.
+</ResponseField>
+
+<ResponseField name="Ratio" type="double">
+  Beta ratio: `BetaUp / BetaDown`. Only populated when `type` is `All`.
+</ResponseField>
+
+<ResponseField name="Convexity" type="double">
+  Beta convexity: `(BetaUp - BetaDown)²`. Only populated when `type` is `All`.
+</ResponseField>
+
+<ResponseField name="ReturnsEval" type="double">
+  Returns of the evaluated quotes (`R`).
+</ResponseField>
+
+<ResponseField name="ReturnsMrkt" type="double">
+  Returns of the market quotes (`Rm`).
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series — standard Beta
+IReadOnlyList<BetaResult> results = quotesEval
+    .ToBeta(quotesMarket, lookbackPeriods, BetaType.Standard);
+
+// all Beta variants (Standard, Up, Down, Ratio, Convexity)
+IReadOnlyList<BetaResult> results = quotesEval
+    .ToBeta(quotesMarket, lookbackPeriods, BetaType.All);
+```
+
+## Streaming
+
+Streaming is not supported for Beta. This indicator requires two synchronized quote series, which cannot be expressed in the single-series streaming model. Use the batch implementation with periodic recalculation instead.
+
+## Chaining
+
+Beta can be generated from any chain-enabled indicator or method. Both `quotesEval` and `quotesMarket` must contain the same number of elements when chaining:
+
+```csharp
+var results = quotesEval
+    .Use(CandlePart.HL2)
+    .ToBeta(quotesMarket.Use(CandlePart.HL2), lookbackPeriods);
+```
+
+<Warning>
+  Both eval and market arguments must contain the same number of elements and be the results of a chainable indicator or `.Use()` method.
+</Warning>
+
+Results can be further processed on `Beta`:
+
+```csharp
+var results = quotesEval
+    .ToBeta(quotesMarket, lookbackPeriods)
+    .ToSlope(slopePeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## Interpretation
+
+- **Beta = 1**: the asset moves in line with the market.
+- **Beta > 1**: amplified market sensitivity (more volatile than the market).
+- **Beta < 1**: dampened sensitivity (less volatile than the market).
+- **Beta < 0**: inverse relationship to the market.
+- High `Convexity` indicates strongly asymmetric behavior between up and down markets.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="Correlation" href="/indicators/volatility/correlation">
+    Correlation Coefficient — linear relationship between two series
+  </Card>
+  <Card title="ATR" href="/indicators/volatility/atr">
+    Average True Range — absolute price volatility measure
+  </Card>
+  <Card title="Slope" href="/indicators/volatility/slope">
+    Slope and Linear Regression — trend direction and strength
+  </Card>
+</Columns>

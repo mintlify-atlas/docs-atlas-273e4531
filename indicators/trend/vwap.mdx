@@ -1,0 +1,112 @@
+---
+title: "VWAP — Intraday Volume Weighted Average Price Benchmark"
+description: "Calculate VWAP, the volume-weighted average price benchmark used for intraday trading decisions and order execution analysis in .NET."
+---
+
+The Volume Weighted Average Price (VWAP) is an accumulated price average weighted by traded volume. It is the primary intraday benchmark for institutional traders, used to evaluate execution quality and to identify short-term support and resistance levels. Trading above VWAP generally favors buyers, while trading below VWAP generally favors sellers. VWAP resets at the beginning of each trading session, making it most relevant on intraday (minute or hourly) data.
+
+## Parameters
+
+<ParamField path="startDate" type="DateTime">
+  Optional. The anchor date from which VWAP accumulation begins. When omitted, accumulation starts at the earliest date in your quotes collection. Values before `startDate` will be `null`.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `VwapResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Vwap" type="double">
+  Volume Weighted Average Price for the cumulative session up to this period. The first period (or `startDate`) will equal the closing price.
+</ResponseField>
+
+## Usage
+
+<Tabs>
+  <Tab title="Full series">
+    ```csharp
+    IReadOnlyList<VwapResult> results =
+      quotes.ToVwap();
+    ```
+  </Tab>
+  <Tab title="Anchored start date">
+    ```csharp
+    IReadOnlyList<VwapResult> results =
+      quotes.ToVwap(startDate);
+    ```
+  </Tab>
+</Tabs>
+
+The `Vwap` value is chain-enabled for further indicator processing:
+
+```csharp
+// chaining example
+var results = quotes
+    .ToVwap()
+    .ToRsi(14);
+```
+
+## Streaming
+
+Use `VwapList` for incremental buffer-style calculations:
+
+```csharp
+VwapList vwapList = new(startDate);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  vwapList.Add(quote);
+}
+
+// based on ICollection<VwapResult>
+IReadOnlyList<VwapResult> results = vwapList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+VwapHub observer = quoteHub.ToVwapHub(startDate);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<VwapResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **Price above VWAP**: bullish intraday momentum — buyers are in control; institutions may look to buy dips to VWAP.
+- **Price below VWAP**: bearish intraday momentum — sellers are in control; institutions may look to sell rallies to VWAP.
+- **Price crossing VWAP from below**: potential intraday bullish reversal or breakout.
+- **Price crossing VWAP from above**: potential intraday bearish reversal or breakdown.
+- **VWAP as support/resistance**: price tends to find support or resistance at the VWAP line, especially in high-volume markets.
+
+<Tip>VWAP is most meaningful on intraday timeframes (minute or hourly bars) for a single trading session. On daily charts the cumulative nature stretches the anchor point over weeks or months, which can dilute its practical significance. Use the `startDate` parameter to anchor VWAP to a specific meaningful event or session open.</Tip>
+
+<Note>Since VWAP is cumulative from its anchor point, the same underlying price data will produce different VWAP values depending on the chosen `startDate`. Ensure you use a consistent anchor across comparisons.</Note>
+
+## Minimum history
+
+You must have at least one historical quote to calculate. Historical quotes are typically intraday minute-based periods for a single trading day.
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="On-Balance Volume" href="/indicators/trend/obv" icon="chart-area">
+    Cumulative volume pressure indicator for divergence analysis.
+  </Card>
+  <Card title="Money Flow Index" href="/indicators/trend/mfi" icon="money-bill-trend-up">
+    Price-volume oscillator with overbought/oversold levels.
+  </Card>
+  <Card title="Ichimoku Cloud" href="/indicators/trend/ichimoku" icon="cloud">
+    Multi-component trend and support/resistance system.
+  </Card>
+</CardGroup>

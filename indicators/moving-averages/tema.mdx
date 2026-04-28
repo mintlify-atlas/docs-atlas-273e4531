@@ -1,0 +1,114 @@
+---
+title: "TEMA: Triple Exponential Moving Average for Stock.Indicators"
+description: "The Triple Exponential Moving Average (TEMA), created by Patrick Mulloy, applies EMA smoothing three times for a faster, lower-lag average of price."
+---
+
+Created by Patrick G. Mulloy, the Triple Exponential Moving Average builds on DEMA by applying EMA smoothing a third time: `3×EMA(N) - 3×EMA(EMA(N)) + EMA(EMA(EMA(N)))`. This weighted combination of three sequential EMAs further reduces lag compared to both EMA and DEMA while preserving reasonable smoothness. Note that TEMA is distinct from the TRIX oscillator — if you want the raw three-EMA value without the weighted correction, use the `Ema3` output from the TRIX indicator instead.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the moving average. Must be greater than 0.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N` periods of quotes to produce any values. For reliable precision, provide at least `3×N+250` data points prior to your intended start date. See [warmup and convergence](https://github.com/DaveSkender/Stock.Indicators/discussions/688) guidance for more detail.
+
+<Warning>
+  The first `3×N+100` periods will have convergence-related precision errors that can reach ~5% deviation in earlier values. Use `.RemoveWarmupPeriods()` to discard these.
+</Warning>
+
+For example, with TEMA(20):
+
+| Period range | Status |
+|---|---|
+| Periods 1–19 | `null` — insufficient data |
+| Period 20 | First TEMA value (may have convergence issues) |
+| Period 160+ | Fully converged, reliable values |
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Tema" type="double">
+  Triple exponential moving average value. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series (Close price by default)
+IReadOnlyList<TemaResult> results =
+    quotes.ToTema(lookbackPeriods);
+```
+
+## Streaming
+
+Use `TemaList` for incremental calculations without a hub:
+
+```csharp
+TemaList temaList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    temaList.Add(quote);
+}
+
+// based on ICollection<TemaResult>
+IReadOnlyList<TemaResult> results = temaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+TemaHub observer = quoteHub.ToTemaHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<TemaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+TEMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToTema(lookbackPeriods);
+```
+
+TEMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed TEMA output into RSI
+var results = quotes
+    .ToTema(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — single-smoothed foundation
+  </Card>
+  <Card title="DEMA" href="/indicators/moving-averages/dema">
+    Double Exponential Moving Average — two-pass smoothing
+  </Card>
+  <Card title="T3" href="/indicators/moving-averages/t3">
+    Tillson T3 — six-EMA composite with tunable volume factor
+  </Card>
+</Columns>

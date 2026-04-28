@@ -1,0 +1,228 @@
+---
+title: Chaining indicators together in .NET
+description: Compute indicators of indicators in Series, BufferList, and StreamHub styles using the IReusable interface and CandlePart enum for alternate price inputs.
+---
+
+# Chaining indicators
+
+Chaining lets you feed the output of one indicator directly into another, enabling composite analysis like RSI of OBV or EMA computed on the median price rather than the close. All three indicator styles support chaining, and the mechanism is always the same: any result type that implements `IReusable` can serve as input to a downstream indicator.
+
+## How chaining works
+
+The `IReusable` interface is the contract that makes chaining possible. It extends `ISeries` with a single `double Value` property that downstream indicators read as their input price series.
+
+```csharp
+public interface IReusable : ISeries
+{
+    // Value passed to chained indicators
+    double Value { get; }
+}
+```
+
+When a result class implements `IReusable`, the library's extension methods accept it wherever they accept raw quote data. You never need to extract values manually — the chain is expressed as a fluent method call.
+
+## CandlePart enum
+
+Before chaining from raw quotes, you can project any OHLCV component into a single-value series using `CandlePart`. This is useful when an indicator should operate on median or typical price rather than the default close.
+
+| Value    | Formula                          | Description                      |
+| -------- | -------------------------------- | -------------------------------- |
+| `Open`   | `Open`                           | Opening price                    |
+| `High`   | `High`                           | Highest price                    |
+| `Low`    | `Low`                            | Lowest price                     |
+| `Close`  | `Close`                          | Closing price (default)          |
+| `Volume` | `Volume`                         | Trade volume                     |
+| `HL2`    | `(High + Low) / 2`               | Median price                     |
+| `HLC3`   | `(High + Low + Close) / 3`       | Typical price                    |
+| `OC2`    | `(Open + Close) / 2`             | Mid-body price                   |
+| `OHL3`   | `(Open + High + Low) / 3`        | Average of open range            |
+| `OHLC4`  | `(Open + High + Low + Close) / 4`| Average price                    |
+
+Pass a `CandlePart` value to `.Use()` to convert your quote list into a chainable `IReusable` sequence before applying a downstream indicator.
+
+## Chaining patterns by style
+
+<Tabs>
+  <Tab title="Series">
+    The Series (batch) style uses fluent extension methods. Each `.ToXxx()` call returns `IReadOnlyList<TResult>`, and because those result types implement `IReusable`, you can keep chaining.
+
+    **RSI of OBV**
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    IReadOnlyList<Quote> quotes = GetQuotesFromFeed("SPY");
+
+    // RSI of On-Balance Volume
+    IReadOnlyList<RsiResult> results = quotes
+        .ToObv()
+        .ToRsi(14);
+    ```
+
+    **EMA of median price (HL2)**
+
+    ```csharp
+    // EMA computed on (High + Low) / 2 instead of Close
+    IReadOnlyList<EmaResult> results = quotes
+        .Use(CandlePart.HL2)
+        .ToEma(20);
+    ```
+
+    **Multi-hop chain**
+
+    ```csharp
+    // Slope of RSI of OBV
+    IReadOnlyList<SlopeResult> results = quotes
+        .ToObv()
+        .ToRsi(14)
+        .ToSlope(20);
+    ```
+
+    <Note>
+      Every intermediate call is computed in full before the next call begins. Series chaining is best for one-time batch calculations where all historical data is available upfront.
+    </Note>
+  </Tab>
+  <Tab title="BufferList">
+    The BufferList style chains by passing a populated `ObvList` (or any `IReadOnlyList<IReusable>`) as the seed data for the downstream list, then calling `.Add()` on the upstream list to propagate new values.
+
+    **RSI of OBV (incremental)**
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    // step 1 – populate OBV buffer with historical quotes
+    ObvList obvList = new();
+    foreach (Quote quote in historicalQuotes)
+    {
+        obvList.Add(quote);
+    }
+
+    // step 2 – seed RSI from the OBV results
+    RsiList rsiList = new(14, obvList);
+
+    // step 3 – process new quotes incrementally
+    foreach (Quote quote in liveQuotes)
+    {
+        obvList.Add(quote);          // OBV updates
+        rsiList.Add(obvList[^1]);    // RSI reads latest OBV value
+
+        if (rsiList.Count > 0)
+        {
+            RsiResult latest = rsiList[^1];
+            Console.WriteLine($"{latest.Timestamp:d}: RSI = {latest.Rsi:N2}");
+        }
+    }
+    ```
+
+    **EMA on HL2 price**
+
+    ```csharp
+    // project quotes to HL2, then feed into EMA buffer
+    QuotePartList hl2List = new(CandlePart.HL2);
+    EmaList emaList = new(20, hl2List);
+
+    foreach (Quote quote in quotes)
+    {
+        hl2List.Add(quote);
+        emaList.Add(hl2List[^1]);
+    }
+    ```
+
+    <Tip>
+      Set `MaxListSize` on any list in the chain to keep memory bounded for long-running processes.
+    </Tip>
+  </Tab>
+  <Tab title="StreamHub">
+    The StreamHub style chains hubs together. Adding a quote to the root `QuoteHub` automatically propagates through every downstream hub in the chain.
+
+    **RSI of EMA**
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    QuoteHub quoteHub = new();
+
+    // chain: quotes → EMA(20) → RSI(14)
+    RsiHub rsiOfEma = quoteHub
+        .ToEmaHub(20)
+        .ToRsiHub(14);
+
+    // or equivalently with named references
+    EmaHub emaHub = quoteHub.ToEmaHub(20);
+    RsiHub rsiHub = emaHub.ToRsiHub(14);
+
+    // adding one quote updates all hubs automatically
+    foreach (Quote quote in liveQuotes)
+    {
+        quoteHub.Add(quote);
+
+        if (rsiOfEma.Results.Count > 0)
+        {
+            RsiResult latest = rsiOfEma.Results[^1];
+            Console.WriteLine(
+                $"{quote.Timestamp:d}: RSI(EMA) = {latest.Rsi:N2}");
+        }
+    }
+    ```
+
+    **EMA of HL2 price in a hub**
+
+    ```csharp
+    QuoteHub quoteHub = new();
+
+    // project to HL2 via QuotePartHub, then compute EMA
+    EmaHub emaHub = quoteHub
+        .ToQuotePartHub(CandlePart.HL2)
+        .ToEmaHub(20);
+
+    quoteHub.Add(newQuote);
+    ```
+
+    **Multiple derived indicators from one root**
+
+    ```csharp
+    QuoteHub quoteHub = new();
+
+    EmaHub emaFast  = quoteHub.ToEmaHub(50);
+    EmaHub emaSlow  = quoteHub.ToEmaHub(200);
+    RsiHub rsiHub   = quoteHub.ToRsiHub(14);
+
+    // a single Add propagates to all three hubs
+    quoteHub.Add(newQuote);
+    ```
+
+    <Note>
+      Hub chains inherit the `maxCacheSize` of the parent. If you set `new QuoteHub(maxCacheSize: 500)`, all downstream hubs are also capped at 500 entries.
+    </Note>
+  </Tab>
+</Tabs>
+
+## The IReusable contract
+
+Any result class that exposes a meaningful scalar value can participate in chaining by implementing `IReusable`. The `Value` property is the single number passed downstream — typically the primary output of the indicator (e.g., `Ema`, `Rsi`, `Obv`).
+
+```csharp
+// Example: EmaResult implements IReusable
+public record EmaResult : IReusable
+{
+    public DateTime Timestamp { get; init; }
+    public double? Ema        { get; init; }
+
+    // IReusable.Value exposes Ema for chaining
+    double IReusable.Value => Ema.Null2NaN();
+}
+```
+
+When you call `.ToRsi(14)` on an `IReadOnlyList<EmaResult>`, the library reads `Value` from each `EmaResult` entry as the price input for RSI. You never manipulate `Value` directly — it is wired up automatically.
+
+<Tip>
+  When writing a [custom indicator](/guide/custom-indicators), implement `IReusable` on your result class to make it chainable with the entire built-in indicator catalog.
+</Tip>
+
+## See also
+
+- [Custom indicators](/guide/custom-indicators) — build your own chainable indicators
+- [Performance](/guide/performance) — understand the cost of chaining
+- [Batch style](/guide/batch) — Series chaining patterns
+- [Buffer lists](/guide/buffer) — incremental chaining
+- [Stream hubs](/guide/stream) — real-time chaining with hub observers

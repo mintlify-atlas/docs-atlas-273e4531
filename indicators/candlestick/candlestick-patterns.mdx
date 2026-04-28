@@ -1,0 +1,167 @@
+---
+title: "Candlestick patterns guide: Doji, Marubozu, and Match"
+description: "Overview of candlestick patterns in Stock Indicators for .NET. All patterns return CandleResult with a Match enum encoding signal direction and strength."
+---
+
+Candlestick patterns analyze the shape of individual or multi-bar candles to identify potential turning points or continuations in price. In Stock Indicators for .NET, every candlestick pattern method returns an `IReadOnlyList<CandleResult>` where each element carries a `Match` property from the `Match` enum. This uniform interface lets you compare, filter, and combine patterns from different methods using the same numeric scale. Bars where no pattern is detected receive `Match.None`.
+
+## Match enum values
+
+The `Match` enum encodes both the direction and confidence of a candlestick signal on a symmetric numeric scale.
+
+| Value | Integer | Meaning |
+|-------|---------|---------|
+| `Match.BullConfirmed` | 200 | Strong bullish signal with confirmation |
+| `Match.BullSignal` | 100 | Bullish signal bar |
+| `Match.BullBasis` | 10 | Bullish basis or setup bar |
+| `Match.Neutral` | 1 | Pattern detected but direction is neutral (e.g. Doji) |
+| `Match.None` | 0 | No pattern on this bar |
+| `Match.BearBasis` | -10 | Bearish basis or setup bar |
+| `Match.BearSignal` | -100 | Bearish signal bar |
+| `Match.BearConfirmed` | -200 | Strong bearish signal with confirmation |
+
+<Note>
+  The numeric values make it easy to filter or sort signals. Any non-zero `Match` value indicates that a pattern was detected on that bar. Values ≥ 100 or ≤ -100 indicate actionable signals.
+</Note>
+
+## CandleResult fields
+
+All candlestick pattern methods return `IReadOnlyList<CandleResult>`.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `Timestamp` | DateTime | Date from the evaluated quote |
+| `Price` | decimal | Close price of the candle |
+| `Match` | Match | Pattern match result (see enum table above) |
+| `CandleProperties` | CandleProperties | Full OHLCV candle data for the bar |
+
+## Available patterns
+
+### Doji
+
+A [Doji](https://en.wikipedia.org/wiki/Doji) is a single-bar pattern where the open and close prices are virtually identical, representing market indecision. The body is very small or nonexistent relative to the wicks.
+
+Doji bars produce `Match.Neutral` — the pattern identifies indecision but does not imply a directional bias by itself.
+
+```csharp
+IReadOnlyList<CandleResult> results =
+    quotes.ToDoji(maxPriceChangePercent);
+```
+
+**Parameter:**
+
+<ParamField path="maxPriceChangePercent" type="double">
+  Optional. Maximum absolute percent difference between open and close. Enter as a percentage value (e.g., `0.3` for 0.3%). Must be between 0 and 0.5 if specified. Default is `0.1` (0.1%).
+</ParamField>
+
+**Streaming:**
+
+```csharp
+// BufferList
+DojiList dojiList = new(maxPriceChangePercent);
+
+foreach (IQuote quote in quotes)
+{
+    dojiList.Add(quote);
+}
+
+IReadOnlyList<CandleResult> results = dojiList;
+
+// QuoteHub
+QuoteHub quoteHub = new();
+DojiHub observer = quoteHub.ToDojiHub(maxPriceChangePercent);
+
+foreach (IQuote quote in quotes)
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<CandleResult> results = observer.Results;
+```
+
+---
+
+### Marubozu
+
+A [Marubozu](https://en.wikipedia.org/wiki/Marubozu) is a single-bar pattern with no (or very small) wicks, where price moves consistently in one direction from open to close. A bullish Marubozu opens at the low and closes at the high; a bearish Marubozu opens at the high and closes at the low.
+
+A bullish Marubozu produces `Match.BullSignal`; a bearish Marubozu produces `Match.BearSignal`.
+
+```csharp
+IReadOnlyList<CandleResult> results =
+    quotes.ToMarubozu(minBodyPercent);
+```
+
+**Parameter:**
+
+<ParamField path="minBodyPercent" type="double">
+  Optional. Minimum candle body size as a percent of total candle range (high to low). Enter as a percentage value (e.g., `85` for 85%). Must be between 80 and 100 if specified. Default is `95` (95%).
+</ParamField>
+
+**Streaming:**
+
+```csharp
+// BufferList
+MarubozuList marubozuList = new(minBodyPercent);
+
+foreach (IQuote quote in quotes)
+{
+    marubozuList.Add(quote);
+}
+
+IReadOnlyList<CandleResult> results = marubozuList;
+
+// QuoteHub
+QuoteHub quoteHub = new();
+MarubozuHub observer = quoteHub.ToMarubozuHub(minBodyPercent);
+
+foreach (IQuote quote in quotes)
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<CandleResult> results = observer.Results;
+```
+
+---
+
+## Filtering to signals only
+
+Use `.Condense()` to remove bars where no pattern was detected (`Match.None`), keeping only actionable results:
+
+```csharp
+// get all Marubozu signals, removing non-matching bars
+IReadOnlyList<CandleResult> signals = quotes
+    .ToMarubozu()
+    .Condense();
+
+// filter to bullish signals only
+IEnumerable<CandleResult> bullish = quotes
+    .ToMarubozu()
+    .Where(x => x.Match >= Match.BullSignal);
+
+// filter to any signal (bull or bear, excluding neutral and none)
+IEnumerable<CandleResult> anySignal = quotes
+    .ToDoji()
+    .Where(x => x.Match != Match.None);
+```
+
+See [Condense()](/utilities/results) for more information about filtering candlestick results.
+
+## Minimum history
+
+All single-bar candlestick patterns require at least one historical quote. In practice, provide a full chart history so that signals are meaningful in context.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="ATR" href="/indicators/volatility/atr">
+    Average True Range — measure volatility around pattern bars
+  </Card>
+  <Card title="Slope" href="/indicators/volatility/slope">
+    Slope and Linear Regression — confirm trend context
+  </Card>
+  <Card title="Getting started" href="/quickstart">
+    Guide to historical quotes and setup
+  </Card>
+</Columns>

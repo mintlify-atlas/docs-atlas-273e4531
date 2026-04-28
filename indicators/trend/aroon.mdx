@@ -1,0 +1,111 @@
+---
+title: "Aroon Oscillator — Trend Direction via High/Low Age"
+description: "Use the Aroon indicator to measure how recently price hit new highs or lows, identifying trend strength and potential reversals in .NET."
+---
+
+Created by Tushar Chande, the Aroon indicator measures how many periods have elapsed since the last highest high and the last lowest low within a lookback window. By comparing these recency values, Aroon identifies whether a market is trending — and in which direction — or cycling without conviction. It is particularly useful for spotting the early emergence of a new trend before momentum indicators confirm it.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="25">
+  Number of periods (`N`) for the high/low lookback evaluation. Must be greater than 0. Common settings are 14 and 25.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is an `AroonResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="AroonUp" type="double">
+  Aroon Up value (0–100). Based on the number of periods since the highest High price in the lookback window.
+</ResponseField>
+
+<ResponseField name="AroonDown" type="double">
+  Aroon Down value (0–100). Based on the number of periods since the lowest Low price in the lookback window.
+</ResponseField>
+
+<ResponseField name="Oscillator" type="double">
+  Aroon Oscillator: `AroonUp − AroonDown`. Ranges from −100 to +100.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series calculation
+IReadOnlyList<AroonResult> results =
+  quotes.ToAroon(lookbackPeriods);
+```
+
+The `Oscillator` value is chain-enabled for further processing:
+
+```csharp
+// chaining example
+var results = quotes
+    .ToAroon(25)
+    .ToSlope(14);
+```
+
+## Streaming
+
+Use `AroonList` for incremental buffer-style calculations:
+
+```csharp
+AroonList aroonList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  aroonList.Add(quote);
+}
+
+// based on ICollection<AroonResult>
+IReadOnlyList<AroonResult> results = aroonList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+AroonHub observer = quoteHub.ToAroonHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<AroonResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **AroonUp = 100**: price made a new N-period high most recently — strong uptrend.
+- **AroonDown = 100**: price made a new N-period low most recently — strong downtrend.
+- **AroonUp above 70 and AroonDown below 30**: a bullish trend is consolidating.
+- **AroonDown above 70 and AroonUp below 30**: a bearish trend is consolidating.
+- **Both values between 30 and 70**: market is consolidating without a clear trend.
+- **Oscillator above 0**: bullish bias; the higher the value, the stronger the uptrend.
+- **Oscillator below 0**: bearish bias; the lower the value, the stronger the downtrend.
+
+<Tip>AroonUp and AroonDown crossing each other can signal potential trend changes before price action confirms them — making Aroon a leading indicator.</Tip>
+
+## Minimum history
+
+You must have at least `N` periods of quotes to cover the warmup period. The first `N-1` periods will have `null` values.
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="ADX" href="/indicators/trend/adx" icon="chart-bar">
+    Measure overall trend strength with the Directional Movement system.
+  </Card>
+  <Card title="SuperTrend" href="/indicators/trend/super-trend" icon="arrow-trend-up">
+    ATR-based trend direction and reversal signals.
+  </Card>
+  <Card title="Parabolic SAR" href="/indicators/trend/parabolic-sar" icon="chart-scatter">
+    Price-time stop and reverse trend indicator by Wilder.
+  </Card>
+</CardGroup>

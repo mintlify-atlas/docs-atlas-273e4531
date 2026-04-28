@@ -1,0 +1,120 @@
+---
+title: "Donchian Channels: Highest-High Lowest-Low Range"
+description: "Donchian Channels track the highest high and lowest low over a rolling window, forming a pure price-range breakout channel for trend-following systems."
+---
+
+Created by Richard Donchian, [Donchian Channels](https://en.wikipedia.org/wiki/Donchian_channel) — also called Price Channels — define a price envelope using the highest High and lowest Low recorded over a lookback window. Because the channel edges are set by extremes rather than averages, a breakout beyond either boundary is a direct signal that price has escaped its recent range. The simplicity and objectivity of this construction made it the backbone of the original Turtle Trading system.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="20">
+  Number of periods (`N`) for the rolling high/low lookback. Must be greater than 0. A value of at least 20 is recommended for a meaningful sample.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `DonchianResult` with the following fields.
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date corresponding to the evaluated quote.
+</ResponseField>
+
+<ResponseField name="UpperBand" type="double">
+  Highest High over the last `N` periods.
+</ResponseField>
+
+<ResponseField name="Centerline" type="double">
+  Simple average of `UpperBand` and `LowerBand`: `(UpperBand + LowerBand) / 2`.
+</ResponseField>
+
+<ResponseField name="LowerBand" type="double">
+  Lowest Low over the last `N` periods.
+</ResponseField>
+
+<ResponseField name="Width" type="double">
+  Band width as a fraction of the centerline: `(UpperBand - LowerBand) / Centerline`.
+</ResponseField>
+
+## Usage
+
+Call `ToDonchian()` on any `IEnumerable<TQuote>` to compute the full series in a single batch pass.
+
+```csharp
+IReadOnlyList<DonchianResult> results =
+    quotes.ToDonchian(lookbackPeriods);
+```
+
+<Note>
+  Donchian Channels are not chain-enabled. They must be generated from `quotes` directly and their result cannot be piped into further chain-enabled indicators.
+</Note>
+
+See [Chaining indicators](/guide/batch#chaining-indicators) for background on the chaining model.
+
+## Streaming
+
+Use `DonchianList` for incremental, event-driven processing without a hub:
+
+```csharp
+DonchianList donchianList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    donchianList.Add(quote);
+}
+
+// read as IReadOnlyList<DonchianResult>
+IReadOnlyList<DonchianResult> results = donchianList;
+```
+
+For pub/sub architectures, subscribe an observer to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+DonchianHub observer = quoteHub.ToDonchianHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<DonchianResult> results = observer.Results;
+```
+
+<Note>
+  See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for complete streaming guides.
+</Note>
+
+## Interpretation
+
+Donchian Channels deliver clear, rule-based signals because every band value is a hard price extreme:
+
+- **Close above the upper band** is a breakout buy signal — price has exceeded the highest high of the recent window.
+- **Close below the lower band** is a breakout sell signal — price has broken below the lowest low.
+- **Centerline** acts as a neutral midpoint; moves toward the centerline from either band can serve as partial exit levels.
+- **Narrowing channel width** reflects a period of consolidation; widening width indicates expanding volatility and a trending market.
+- The original Turtle Trading rules used a 20-period channel for entries and a 10-period channel for exits — mixing lookback periods on the same chart is common practice.
+
+<Tip>
+  Donchian Channels work best in clearly trending markets. In choppy, range-bound conditions, frequent false breakouts will generate poor signals. Confirm breakouts with volume or a momentum filter.
+</Tip>
+
+## Minimum history
+
+You must supply at least `N+1` periods of quotes to cover the warm-up period.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Bollinger Bands" icon="chart-line" href="/indicators/channels/bollinger-bands">
+    Volatility bands based on standard deviations from an SMA.
+  </Card>
+  <Card title="Keltner Channels" icon="chart-line" href="/indicators/channels/keltner">
+    ATR-based bands around an EMA center line.
+  </Card>
+  <Card title="STARC Bands" icon="chart-line" href="/indicators/channels/starc-bands">
+    ATR-based bands around an SMA center line.
+  </Card>
+  <Card title="Standard Deviation Channels" icon="chart-line" href="/indicators/channels/std-dev-channels">
+    Linear-regression channels with std-dev band widths.
+  </Card>
+</CardGroup>

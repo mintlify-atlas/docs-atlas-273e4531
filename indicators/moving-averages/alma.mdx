@@ -1,0 +1,110 @@
+---
+title: "ALMA: Arnaud Legoux Moving Average indicator for .NET"
+description: "ALMA applies a Gaussian weighting curve to price over a lookback window, balancing smoothness and responsiveness via offset and sigma tuning parameters."
+---
+
+Created by Arnaud Legoux and Dimitrios Kouzis-Loukas, the Arnaud Legoux Moving Average applies a normal (Gaussian) distribution curve as the weight function across the lookback window. Two tuning parameters — `offset` and `sigma` — let you control where the peak of the bell curve falls (trading responsiveness for smoothness) and how wide the distribution is. The result is a smooth average that avoids the abrupt cutoffs of simple windows while remaining tunable for different trading styles.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required default="9">
+  Number of periods (`N`) in the moving average. Must be greater than 1. Typically in the 5–20 range. Default is `9`.
+</ParamField>
+
+<ParamField path="offset" type="double" default="0.85">
+  Adjusts smoothness versus responsiveness on a scale from 0 to 1, where 1 is maximum responsiveness. Default is `0.85`.
+</ParamField>
+
+<ParamField path="sigma" type="double" default="6">
+  Defines the width of the Gaussian normal distribution. Must be greater than 0. Default is `6`.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N` periods of quotes to cover the warmup period.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Alma" type="double">
+  Arnaud Legoux Moving Average value. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series with default parameters (lookback=9, offset=0.85, sigma=6)
+IReadOnlyList<AlmaResult> results =
+    quotes.ToAlma(lookbackPeriods, offset, sigma);
+```
+
+## Streaming
+
+Use `AlmaList` for incremental calculations without a hub:
+
+```csharp
+AlmaList almaList = new(lookbackPeriods, offset, sigma);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    almaList.Add(quote);
+}
+
+// based on ICollection<AlmaResult>
+IReadOnlyList<AlmaResult> results = almaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+AlmaHub observer = quoteHub.ToAlmaHub(lookbackPeriods, offset, sigma);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<AlmaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+ALMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToAlma(lookbackPeriods, offset, sigma);
+```
+
+ALMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed ALMA output into RSI
+var results = quotes
+    .ToAlma(lookbackPeriods, offset, sigma)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="HMA" href="/indicators/moving-averages/hma">
+    Hull Moving Average — WMA-based low-lag average
+  </Card>
+  <Card title="KAMA" href="/indicators/moving-averages/kama">
+    Kaufman's Adaptive Moving Average — volatility-adaptive smoothing
+  </Card>
+  <Card title="WMA" href="/indicators/moving-averages/wma">
+    Weighted Moving Average — simpler linear weighting
+  </Card>
+</Columns>

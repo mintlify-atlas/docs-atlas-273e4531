@@ -1,0 +1,118 @@
+---
+title: "KAMA: Kaufman's Adaptive Moving Average indicator for .NET"
+description: "KAMA dynamically adjusts its smoothing speed based on an Efficiency Ratio, tracking trends closely during directional moves while filtering sideways noise."
+---
+
+Created by Perry Kaufman, the Kaufman Adaptive Moving Average dynamically adjusts its smoothing constant based on an Efficiency Ratio (ER) that measures the directional movement of price relative to total path length. When price is trending strongly (high ER), KAMA tracks it closely like a fast EMA; when price chops sideways (low ER), KAMA barely moves. This self-adjusting behavior makes KAMA particularly useful for trend-following strategies that need to avoid whipsaws in ranging markets.
+
+## Parameters
+
+<ParamField path="erPeriods" type="int" default="10">
+  Number of Efficiency Ratio (volatility) periods (`E`). Must be greater than 0. Default is `10`.
+</ParamField>
+
+<ParamField path="fastPeriods" type="int" default="2">
+  Number of fast EMA periods. Must be greater than 0. Default is `2`.
+</ParamField>
+
+<ParamField path="slowPeriods" type="int" default="30">
+  Number of slow EMA periods. Must be greater than `fastPeriods`. Default is `30`.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `6×E` or `E+100` periods of quotes, whichever is greater, to cover warmup and convergence. For better precision, provide at least `10×E` data points prior to your intended start date.
+
+<Warning>
+  The first `10×E` periods will have convergence-related precision errors that can reach ~5% deviation in earlier values. Use `.RemoveWarmupPeriods()` to discard these.
+</Warning>
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Er" type="double">
+  Efficiency Ratio — measures the fractal efficiency of price changes. Fluctuates between 0 and 1. A value near 1 means price moved consistently in one direction; a value near 0 means price was unchanged or reversed repeatedly. Returns `null` for the first `E-1` periods.
+</ResponseField>
+
+<ResponseField name="Kama" type="double">
+  Kaufman's Adaptive Moving Average value. Returns `null` for the first `E-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series with default parameters (erPeriods=10, fastPeriods=2, slowPeriods=30)
+IReadOnlyList<KamaResult> results =
+    quotes.ToKama(erPeriods, fastPeriods, slowPeriods);
+```
+
+## Streaming
+
+Use `KamaList` for incremental calculations without a hub:
+
+```csharp
+KamaList kamaList = new(erPeriods, fastPeriods, slowPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    kamaList.Add(quote);
+}
+
+// based on ICollection<KamaResult>
+IReadOnlyList<KamaResult> results = kamaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+KamaHub observer = quoteHub.ToKamaHub(erPeriods, fastPeriods, slowPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<KamaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+KAMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToKama(erPeriods, fastPeriods, slowPeriods);
+```
+
+KAMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed KAMA output into RSI
+var results = quotes
+    .ToKama(erPeriods, fastPeriods, slowPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — fixed-rate exponential smoothing
+  </Card>
+  <Card title="ALMA" href="/indicators/moving-averages/alma">
+    Arnaud Legoux Moving Average — Gaussian-weighted smooth average
+  </Card>
+  <Card title="T3" href="/indicators/moving-averages/t3">
+    Tillson T3 — multi-EMA composite with volume factor tuning
+  </Card>
+</Columns>

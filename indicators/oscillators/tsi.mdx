@@ -1,0 +1,120 @@
+---
+title: "True Strength Index (TSI) Indicator"
+description: "Calculate TSI to track momentum trends using double-smoothed EMA of price changes. Returns the TSI line and an optional signal line for crossover signals."
+---
+
+The True Strength Index (TSI), developed by William Blau, applies a two-stage exponential moving average to raw price changes and their absolute values to produce a normalized momentum oscillator. The double-smoothing reduces noise significantly compared to simpler rate-of-change measures, making TSI useful for identifying momentum trends and their reversals. A signal line (EMA of TSI) is also provided for crossover-based entry and exit signals.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods `N` for the first EMA applied to price changes. Must be greater than 0. Default is **25**.
+</ParamField>
+
+<ParamField path="smoothPeriods" type="int" required>
+  Number of periods `M` for the second smoothing EMA. Must be greater than 0. Default is **13**.
+</ParamField>
+
+<ParamField path="signalPeriods" type="int" required>
+  Number of periods `S` for the EMA signal line of TSI. Must be ≥ 0. Set to **0** to omit the signal line. Default is **7**.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<TsiResult> results =
+  quotes.ToTsi(lookbackPeriods, smoothPeriods, signalPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Tsi" type="double | null">
+  True Strength Index value. `null` for the first `N+M-1` periods.
+</ResponseField>
+
+<ResponseField name="Signal" type="double | null">
+  EMA of the TSI line. `null` when `signalPeriods=0` or insufficient data.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<TsiResult> results =
+  quotes.ToTsi(lookbackPeriods, smoothPeriods, signalPeriods);
+```
+
+TSI can be calculated on any chain-enabled source:
+
+```csharp
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToTsi(25, 13, 7);
+```
+
+Chain further indicators on the `Tsi` output value:
+
+```csharp
+var results = quotes
+    .ToTsi(25, 13, 7)
+    .ToSlope(5);
+```
+
+## Streaming
+
+Use `TsiList` for incremental updates without a hub:
+
+```csharp
+// buffer-style streaming
+TsiList buffer = new(lookbackPeriods, smoothPeriods, signalPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    buffer.Add(quote);
+    TsiResult result = buffer[^1];
+}
+
+// or initialize with historical quotes
+TsiList buffer = quotes.ToTsiList(lookbackPeriods, smoothPeriods, signalPeriods);
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| TSI value | Signal |
+|-----------|--------|
+| Positive | Net upward momentum |
+| Negative | Net downward momentum |
+| Crosses above zero | Momentum turning bullish |
+| Crosses below zero | Momentum turning bearish |
+| TSI crosses above Signal | Bullish signal |
+| TSI crosses below Signal | Bearish signal |
+
+TSI values typically oscillate between −25 and +25 in trending markets, but there are no fixed overbought/oversold thresholds — use historical extremes for context. Unlike single-smoothed oscillators, TSI's double-EMA structure is resistant to short-term noise while remaining responsive to sustained momentum shifts.
+
+<Warning>
+TSI uses two-stage EMA smoothing. The first `N+M+250` periods carry convergence errors up to ~5%. Supply sufficient history or call `.RemoveWarmupPeriods()` before acting on early values.
+</Warning>
+
+## Minimum history
+
+You must supply at least `N+M+100` periods of quotes to cover warmup and convergence. For best precision, use at least `N+M+250` periods prior to your intended start date.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="MACD" href="/indicators/oscillators/macd">
+    EMA convergence/divergence with signal line.
+  </Card>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Single-smoothed momentum bounded to 0–100.
+  </Card>
+  <Card title="Rate of Change" href="/indicators/oscillators/roc">
+    Unsmoothed percent-change momentum.
+  </Card>
+  <Card title="Stochastic RSI" href="/indicators/oscillators/stoch-rsi">
+    Stochastic applied to RSI values.
+  </Card>
+</CardGroup>

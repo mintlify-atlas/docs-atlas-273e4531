@@ -1,0 +1,268 @@
+---
+title: "Stream Hub Style Guide | Stock Indicators"
+description: "Learn how to use the StreamHub real-time style in Stock Indicators for .NET for observable, coordinated multi-indicator updates on live data feeds."
+---
+
+# Stream hub style
+
+Stream hub style delivers real-time indicator processing through an observable hub–observer pattern. A central `QuoteHub` acts as the data source; any number of indicator hubs subscribe to it. When a new quote arrives, a single `Add()` call automatically cascades updates through every subscribed indicator in the correct sequence — no manual coordination required.
+
+## When to use stream hubs
+
+**Ideal for:**
+
+- Live data feeds and WebSocket integration
+- Multiple indicators requiring synchronized updates
+- Trading applications with low-latency requirements
+- Real-time dashboards and monitoring
+- Complex event-driven architectures
+
+**Not ideal for:**
+
+- One-time historical analysis — use [Series batch](/guide/batch)
+- Simple incremental processing without coordination needs — use [Buffer lists](/guide/buffer)
+- Scenarios without real-time requirements
+
+## Basic usage
+
+<Steps>
+  <Step title="Create a QuoteHub">
+    The `QuoteHub` is the data source that all indicator hubs subscribe to.
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    QuoteHub quoteHub = new();
+    ```
+  </Step>
+  <Step title="Subscribe indicator hubs">
+    Call `To*Hub()` extension methods on the `QuoteHub` to create and register subscribed indicator hubs.
+
+    ```csharp
+    SmaHub smaHub = quoteHub.ToSmaHub(20);
+    RsiHub rsiHub = quoteHub.ToRsiHub(14);
+    ```
+  </Step>
+  <Step title="Stream quotes">
+    Add quotes to the `QuoteHub`. All subscribed indicator hubs update automatically.
+
+    ```csharp
+    foreach (Quote quote in liveQuotes)
+    {
+        // adding to quoteHub automatically updates all subscribers
+        quoteHub.Add(quote);
+
+        // safely get latest results
+        if (smaHub.Results.Count > 0)
+        {
+            SmaResult sma = smaHub.Results[^1];
+            RsiResult rsi = rsiHub.Results[^1];
+
+            // use results for trading logic, alerts, etc.
+            if (sma.Sma is not null && rsi.Rsi > 70)
+            {
+                Console.WriteLine($"{quote.Timestamp:d}: Overbought at {quote.Close:C2}");
+            }
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Using `Results[^1]` on an empty collection throws `IndexOutOfRangeException`. Always check `Results.Count > 0` before accessing by index.
+</Tip>
+
+## Key features
+
+### Observable pattern
+
+The hub–observer architecture ensures every subscribed indicator stays in sync:
+
+- A single `quoteHub.Add(quote)` call propagates to all subscribed indicators
+- Cascade execution happens automatically in the correct dependency order
+- Minimal latency overhead — no polling or manual notification required
+
+### Chaining indicators
+
+Create derived indicators by chaining hub-to-hub subscriptions:
+
+```csharp
+QuoteHub quoteHub = new();
+
+// chain RSI from EMA
+EmaHub emaHub = quoteHub.ToEmaHub(20);
+RsiHub rsiHub = emaHub.ToRsiHub(14);  // RSI of EMA
+
+// or inline fluent style
+RsiHub rsiOfEma = quoteHub
+    .ToEmaHub(20)
+    .ToRsiHub(14);
+
+// publish quote - both EMA and RSI update automatically
+quoteHub.Add(newQuote);
+```
+
+### State management and rollback
+
+Stream hubs handle late-arriving and corrected data automatically:
+
+```csharp
+QuoteHub quoteHub = new();
+SmaHub smaHub = quoteHub.ToSmaHub(20);
+
+// add quotes normally
+quoteHub.Add(quote1);
+quoteHub.Add(quote2);
+
+// late-arriving data with an earlier timestamp
+quoteHub.Add(lateQuote);  // triggers recalculation in dependent hubs
+
+// remove an incorrect quote
+quoteHub.Remove(badQuote);  // triggers recalculation
+```
+
+The hub automatically rolls back and recalculates when data arrives out of order or is removed.
+
+### Reactive crossover strategies
+
+```csharp
+QuoteHub quoteHub = new();
+
+EmaHub emaFast = quoteHub.ToEmaHub(50);
+EmaHub emaSlow = quoteHub.ToEmaHub(200);
+
+// add quotes to quoteHub (from stream)
+quoteHub.Add(newQuote);
+// both EmaHub instances are now in sync
+
+if (emaFast.Results[^2].Ema < emaSlow.Results[^2].Ema
+ && emaFast.Results[^1].Ema > emaSlow.Results[^1].Ema)
+{
+    // bullish crossover occurred
+}
+```
+
+## Thread safety
+
+Stream hubs use internal locking to protect cache integrity during rebuild and rollback operations:
+
+- Internal cache operations (`Add`, `RemoveAt`, `RemoveRange`, `Rebuild`) are thread-safe
+- External calls to hub methods from multiple threads still require synchronization
+- Single-threaded usage requires no additional synchronization
+
+### Thread-safe external access example
+
+```csharp
+QuoteHub quoteHub = new();
+SmaHub smaHub = quoteHub.ToSmaHub(20);
+
+object hubLock = new();
+
+// Thread 1: adding quotes
+Task producer = Task.Run(() =>
+{
+    foreach (Quote quote in liveQuotes)
+    {
+        lock (hubLock)
+        {
+            quoteHub.Add(quote);
+        }
+    }
+});
+
+// Thread 2: reading results
+Task consumer = Task.Run(() =>
+{
+    while (running)
+    {
+        SmaResult? latest;
+        lock (hubLock)
+        {
+            latest = smaHub.Results.Count > 0 ? smaHub.Results[^1] : null;
+        }
+        ProcessResult(latest);
+    }
+});
+```
+
+<Warning>
+  Internal thread safety only protects cache integrity during rebuild operations triggered by out-of-order data. Wrap concurrent external calls to `Add` or `Remove` in your own synchronization.
+</Warning>
+
+## WebSocket integration
+
+Connect a `QuoteHub` directly to a WebSocket feed. The pattern applies to any async data source — SSE, message queues, and so on.
+
+```csharp
+// setup hubs
+QuoteHub quoteHub = new();
+SmaHub smaHub = quoteHub.ToSmaHub(20);
+
+// WebSocket message handler
+async Task OnQuoteReceived(WebSocketQuote wsQuote)
+{
+    // convert WebSocket quote to library Quote
+    Quote quote = new()
+    {
+        Timestamp = wsQuote.Timestamp,
+        Open      = wsQuote.Open,
+        High      = wsQuote.High,
+        Low       = wsQuote.Low,
+        Close     = wsQuote.Close,
+        Volume    = wsQuote.Volume
+    };
+
+    // update hub — all subscribed indicator hubs cascade automatically
+    quoteHub.Add(quote);
+
+    // the SmaHub will already have the next SMA value ready
+}
+```
+
+## Memory management with `maxCacheSize`
+
+Stream hubs prune the oldest cached results automatically when the cache exceeds its configured limit:
+
+```csharp
+// default max cache size (100,000 items)
+QuoteHub quoteHub = new();
+
+// or configure a custom limit
+QuoteHub limitedHub = new(maxCacheSize: 500);
+
+// chained hubs inherit the same limit
+SmaHub smaHub = limitedHub.ToSmaHub(20);
+
+// oldest results are pruned automatically as new quotes arrive
+foreach (Quote quote in liveQuotes)
+{
+    limitedHub.Add(quote);
+}
+```
+
+<Note>
+  Chained hubs inherit the `maxCacheSize` of their provider. Setting `maxCacheSize: 1000` on your `QuoteHub` applies the same limit to all downstream `SmaHub`, `RsiHub`, and other chained hubs automatically.
+</Note>
+
+<Tip>
+  If you only need the latest indicator value and do not use historical results, set a minimal `maxCacheSize` aligned to the indicator's minimum lookback period to reduce memory consumption.
+</Tip>
+
+## Performance characteristics
+
+- **Overhead:** ~20–30% slower than batch style for equivalent datasets
+- **Memory:** Maintains a result cache for each subscribed indicator hub; bounded by `maxCacheSize`
+- **Latency:** Optimized for real-time updates, typically under 1 ms per quote
+- **Scalability:** Supports multiple concurrent observers with a single propagation pass
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Series batch style" icon="layer-group" href="/guide/batch">
+    For one-time bulk conversions of complete historical datasets.
+  </Card>
+  <Card title="Buffer list style" icon="list" href="/guide/buffer">
+    For self-managed incremental processing without hub infrastructure.
+  </Card>
+</CardGroup>

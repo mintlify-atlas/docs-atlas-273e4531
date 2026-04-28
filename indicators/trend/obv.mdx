@@ -1,0 +1,101 @@
+---
+title: "On-Balance Volume (OBV) — Volume Accumulation Line"
+description: "Track cumulative buying and selling pressure with On-Balance Volume (OBV), a volume accumulation indicator popularized by Joseph Granville in .NET."
+---
+
+Popularized by Joseph Granville, On-Balance Volume (OBV) is a running cumulative total of volume that adds volume on up-close days and subtracts volume on down-close days. The resulting line moves in the same general direction as price when supply and demand are in balance, but divergences between OBV and price can reveal hidden buying or selling pressure before a price move occurs.
+
+## Parameters
+
+OBV has no configuration parameters. Call `ToObv()` directly on your quotes collection.
+
+## Result fields
+
+Each element in the returned series is an `ObvResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Obv" type="double">
+  Running cumulative On-Balance Volume total. The first period always returns `0`.
+</ResponseField>
+
+<Warning>The absolute value of OBV is arbitrary and depends entirely on the starting point of your quote series. Use OBV to compare direction and divergences, not as a standalone numeric measure.</Warning>
+
+## Usage
+
+```csharp
+// batch series calculation
+IReadOnlyList<ObvResult> results =
+  quotes.ToObv();
+```
+
+The `Obv` value is chain-enabled for further indicator processing:
+
+```csharp
+// chaining example
+var results = quotes
+    .ToObv()
+    .ToRsi(14);
+```
+
+## Streaming
+
+Use `ObvList` for incremental buffer-style calculations:
+
+```csharp
+ObvList obvList = new();
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  obvList.Add(quote);
+}
+
+// based on ICollection<ObvResult>
+IReadOnlyList<ObvResult> results = obvList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+ObvHub observer = quoteHub.ToObvHub();
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<ObvResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **OBV rising with price**: volume confirms the uptrend — healthy price advance.
+- **OBV falling with price**: volume confirms the downtrend — healthy price decline.
+- **OBV rising while price is flat or falling**: bullish divergence — accumulation may precede a price move up.
+- **OBV falling while price is flat or rising**: bearish divergence — distribution may precede a price move down.
+- **OBV breaking a previous high/low ahead of price**: can act as an early trend confirmation signal.
+
+<Tip>Focus on OBV's trend and direction rather than its absolute number. Apply a moving average to OBV itself (via chaining) to smooth out noise and identify medium-term volume trends.</Tip>
+
+## Minimum history
+
+You must have at least 2 historical quotes to cover the warmup period. Since OBV is a cumulative trendline, a longer history produces more useful context.
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="Money Flow Index" href="/indicators/trend/mfi" icon="money-bill-trend-up">
+    Price-volume oscillator combining OBV concepts with overbought/oversold levels.
+  </Card>
+  <Card title="VWAP" href="/indicators/trend/vwap" icon="scale-balanced">
+    Volume-weighted average price for intraday price benchmarking.
+  </Card>
+  <Card title="ADX" href="/indicators/trend/adx" icon="chart-bar">
+    Measure trend strength independent of volume.
+  </Card>
+</CardGroup>

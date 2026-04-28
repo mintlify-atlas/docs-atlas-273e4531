@@ -1,0 +1,185 @@
+---
+title: "Contributing to Stock Indicators for .NET"
+description: "Learn how to report bugs, request features, add new indicators, set up your dev environment, write tests, and submit pull requests to Stock Indicators for .NET."
+---
+
+Stock Indicators for .NET is an open-source project and welcomes contributions. This page explains how to get involved — from filing a bug report to submitting a fully tested new indicator.
+
+## What we accept
+
+<CardGroup cols={2}>
+  <Card title="Bug reports and fixes" icon="bug">
+    Reproducible issues with steps, code samples, and reference materials.
+  </Card>
+  <Card title="Usability improvements" icon="wand-magic-sparkles">
+    API ergonomics, error messages, and developer experience improvements.
+  </Card>
+  <Card title="Documentation updates" icon="book-open">
+    Corrections, clarifications, and new examples.
+  </Card>
+  <Card title="New indicators" icon="chart-line">
+    Reputable, "by the book" indicators with published references.
+  </Card>
+</CardGroup>
+
+<Note>
+  We do not accept personal customizations, modified outputs that are not intrinsic to the indicator algorithm, or indicators without a reputable published reference. These belong in your own wrapper code.
+</Note>
+
+If you want to contribute but are not sure where to start, open a [Discussion](https://github.com/DaveSkender/Stock.Indicators/discussions) and we will help you find work in an area of interest.
+
+---
+
+## Reporting bugs and requesting features
+
+- **Bug reports** — open a [bug issue](https://github.com/DaveSkender/Stock.Indicators/issues/new?labels=bug&template=bug_report.md) with a detailed description, steps to reproduce, code samples, and any reference materials.
+- **Feature requests** — open a [feature issue](https://github.com/DaveSkender/Stock.Indicators/issues/new?labels=enhancement&template=feature_request.md).
+- **General questions and ideation** — use the [Discussions](https://github.com/DaveSkender/Stock.Indicators/discussions) area.
+
+---
+
+## Development setup
+
+<Steps>
+  <Step title="Fork and clone the repository">
+    Fork the repo on GitHub, then clone your fork locally.
+  </Step>
+  <Step title="Run initial setup">
+    ```bash
+    dotnet tool restore   # install .NET CLI tools
+    dotnet restore        # restore NuGet packages
+    ```
+
+    The recommended environment is VS Code with the included dev container, which handles this automatically.
+  </Step>
+  <Step title="Build the solution">
+    ```bash
+    dotnet build "Stock.Indicators.sln" -v minimal --nologo
+    ```
+  </Step>
+  <Step title="Run the tests">
+    ```bash
+    dotnet test "Stock.Indicators.sln" --no-restore --nologo
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Testing requirements
+
+All contributions must include tests. Review the `tests/indicators` folder for examples — copy an existing test file and adapt it for your change.
+
+### Unit tests
+
+- New indicators must be tested against **manually calculated, proven results**.
+- Include your manual calculations spreadsheet in the indicator's test folder when submitting.
+- Historical quote data is in `tests/_common/Data.Quotes.xlsx`. Use a copy of this file for manual calculations; do not commit changes to the original.
+- All existing tests must continue to pass with no new errors or warnings.
+
+### Performance benchmarks
+
+```bash
+# from /tools/performance — run all benchmarks (~15-20 min)
+dotnet run -c Release
+
+# run specific categories
+dotnet run -c Release --filter *Series*
+dotnet run -c Release --filter *Stream*
+dotnet run -c Release --filter *Buffer*
+
+# run a single indicator benchmark
+dotnet run -c Release --filter *.ToAdx
+```
+
+### Regression baselines
+
+Regression baselines detect unintended behavioral changes. Each baseline is a JSON file with expected outputs for standard test data.
+
+```bash
+# run all regression tests
+dotnet test --filter "TestCategory=Regression"
+
+# regenerate a specific baseline after an intentional change
+dotnet run --project tools/baselining -- --indicator SMA
+```
+
+Regenerate baselines only after intentional algorithm changes, .NET upgrades, or test-data changes. Document the reason in your PR description.
+
+---
+
+## Submitting changes
+
+<Steps>
+  <Step title="Open or reference an issue">
+    Before starting work, comment on the relevant issue (or create one) to avoid duplicate efforts.
+  </Step>
+  <Step title="Keep changes small and focused">
+    Do not mix multiple unrelated contributions in a single pull request.
+  </Step>
+  <Step title="Run all quality gates">
+    ```bash
+    dotnet format --severity info --no-restore
+    dotnet build "Stock.Indicators.sln"
+    dotnet test "Stock.Indicators.sln" --no-restore
+    npx markdownlint-cli2
+    ```
+  </Step>
+  <Step title="Submit a pull request">
+    Open a PR with a clear description of **what** changed and **why** it matters.
+  </Step>
+</Steps>
+
+### Pull request naming convention
+
+PR titles must follow [Conventional Commits](https://www.conventionalcommits.org) format:
+
+```
+type: Subject
+```
+
+- `type` is lowercase: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`, `plan`
+- `Subject` starts with an uppercase letter
+- Total length ≤ 65 characters
+
+**Examples:**
+
+| Type | Example title |
+|------|---------------|
+| New indicator | `feat: Add RSI indicator` |
+| Bug fix | `fix: Resolve calculation error in MACD` |
+| Documentation | `docs: Update API documentation` |
+| Performance | `perf: Optimize EMA buffer allocation` |
+
+After a PR is reviewed, accepted, and squash-merged to `main`, changes may be batched before a new NuGet package version is published. Please be patient with turnaround time.
+
+---
+
+## Standards and design guidelines
+
+- [Guiding principles for this project](https://github.com/DaveSkender/Stock.Indicators/discussions/648)
+- [.NET Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines)
+- [NuGet Best Practices](https://learn.microsoft.com/en-us/dotnet/standard/library-guidance/nuget)
+- [Semantic Versioning 2.0](https://semver.org)
+
+### Versioning
+
+The project uses [GitVersion](https://gitversion.net) for automated semantic versioning based on branch names and commit messages.
+
+| Version component | Trigger |
+|-------------------|---------|
+| Major (`x.-.-`) | Breaking changes — add `+semver: major` to commit message |
+| Minor (`-.x.-`) | New features — add `+semver: minor` |
+| Patch (`-.-.x`) | Bug fixes — default auto-increment |
+
+---
+
+## License
+
+This project uses the [Apache 2.0 license](https://opensource.org/licenses/Apache-2.0). By submitting changes, you acknowledge and agree to both the [Developer Certificate of Origin (DCO) 1.1](https://developercertificate.org) and the Apache 2.0 license terms.
+
+---
+
+## Contact
+
+[Start a discussion](https://github.com/DaveSkender/Stock.Indicators/discussions) or [submit an issue](https://github.com/DaveSkender/Stock.Indicators/issues) for publicly relevant topics. You can also reach the maintainer directly at [@daveskender](https://twitter.com/messages/compose?recipient_id=27475431) on X.

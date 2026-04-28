@@ -1,0 +1,106 @@
+---
+title: "DEMA: Double Exponential Moving Average for Stock.Indicators"
+description: "The Double Exponential Moving Average (DEMA), created by Patrick Mulloy, applies EMA smoothing twice to produce a faster-reacting average with reduced lag."
+---
+
+Created by Patrick G. Mulloy, the Double Exponential Moving Average applies EMA smoothing twice — computing `2×EMA(N) - EMA(EMA(N))` — to produce a line that reacts to price changes more quickly than a standard EMA of the same period. The reduced lag makes DEMA useful for trend identification, crossover systems, and as an input to other indicators when responsiveness is more important than smoothness.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the moving average. Must be greater than 0.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `3×N` or `2×N+100` periods of quotes, whichever is greater, to cover warmup and convergence. For better precision, provide at least `2×N+250` data points prior to your intended start date.
+
+<Warning>
+  The first `2×N+100` periods will have convergence-related precision errors that can reach ~5% deviation in earlier values. Use `.RemoveWarmupPeriods()` to discard these.
+</Warning>
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Dema" type="double">
+  Double exponential moving average value. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series (Close price by default)
+IReadOnlyList<DemaResult> results =
+    quotes.ToDema(lookbackPeriods);
+```
+
+## Streaming
+
+Use `DemaList` for incremental calculations without a hub:
+
+```csharp
+DemaList demaList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    demaList.Add(quote);
+}
+
+// based on ICollection<DemaResult>
+IReadOnlyList<DemaResult> results = demaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+DemaHub observer = quoteHub.ToDemaHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<DemaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+DEMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToDema(lookbackPeriods);
+```
+
+DEMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed DEMA output into RSI
+var results = quotes
+    .ToDema(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — the single-smoothed base
+  </Card>
+  <Card title="TEMA" href="/indicators/moving-averages/tema">
+    Triple Exponential Moving Average — triple-smoothed, even faster variant
+  </Card>
+  <Card title="T3" href="/indicators/moving-averages/t3">
+    Tillson T3 — six-EMA composite with volume factor control
+  </Card>
+</Columns>

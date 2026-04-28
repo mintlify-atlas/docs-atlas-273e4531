@@ -1,0 +1,151 @@
+---
+title: "Stochastic RSI Oscillator Indicator"
+description: "Calculate Stochastic RSI to apply stochastic analysis to RSI values. Returns %K and %D lines for highly sensitive overbought/oversold signals."
+---
+
+Stochastic RSI, created by Tushar Chande and Stanley Kroll, applies the Stochastic Oscillator formula to RSI values rather than price. The result is a more sensitive oscillator that reaches overbought and oversold extremes more frequently than either RSI or the standard Stochastic Oscillator alone. It is particularly useful in ranging markets and for identifying short-term momentum reversals. Note that this indicator is distinct from the traditional Stochastic Oscillator, which operates on raw price data.
+
+## Parameters
+
+<ParamField path="rsiPeriods" type="int" required>
+  Number of periods `R` for the underlying RSI calculation. Must be greater than 0. Standard is **14**.
+</ParamField>
+
+<ParamField path="stochPeriods" type="int" required>
+  Number of periods `S` for the stochastic lookback applied to RSI values. Must be greater than 0. Typically the same value as `rsiPeriods`.
+</ParamField>
+
+<ParamField path="signalPeriods" type="int" required>
+  Number of periods `G` for the signal line (SMA of StochRSI). Must be greater than 0. Typically **3–5**.
+</ParamField>
+
+<ParamField path="smoothPeriods" type="int" required>
+  Smoothing periods `M` for the stochastic. Must be greater than 0. Default is **1** (Fast variant). Use **3** for slow variant.
+</ParamField>
+
+<Tip>
+The original Stochastic RSI formula uses the fast variant (`smoothPeriods=1`). For a standard 14-period setup, call `quotes.ToStochRsi(14, 14, 3, 1)`.
+</Tip>
+
+## Result fields
+
+```csharp
+IReadOnlyList<StochRsiResult> results =
+  quotes.ToStochRsi(rsiPeriods, stochPeriods, signalPeriods, smoothPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="StochRsi" type="double | null">
+  %K Oscillator = `Stoch(S, G, M)` of `RSI(R)` of price. `null` for the first `R+S+M` periods.
+</ResponseField>
+
+<ResponseField name="Signal" type="double | null">
+  %D signal line — simple moving average of `StochRsi` over `G` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<StochRsiResult> results =
+  quotes.ToStochRsi(rsiPeriods, stochPeriods, signalPeriods, smoothPeriods);
+```
+
+Stochastic RSI can be generated from any chain-enabled source:
+
+```csharp
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToStochRsi(14, 14, 3, 1);
+```
+
+Chain further indicators on the `StochRsi` output value:
+
+```csharp
+var results = quotes
+    .ToStochRsi(14, 14, 3, 1)
+    .ToSlope(5);
+```
+
+## Streaming
+
+Use `StochRsiList` for incremental updates without a hub:
+
+```csharp
+StochRsiList stochRsiList = new(rsiPeriods, stochPeriods, signalPeriods, smoothPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  stochRsiList.Add(quote);
+}
+
+// based on ICollection<StochRsiResult>
+IReadOnlyList<StochRsiResult> results = stochRsiList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+StochRsiHub observer = quoteHub.ToStochRsiHub(rsiPeriods, stochPeriods, signalPeriods, smoothPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<StochRsiResult> results = observer.Results;
+```
+
+<Info>
+**Compound hub reuse.** If you already have an `RsiHub` instance, you can pass it directly to avoid creating a second internal RSI calculation:
+
+```csharp
+// existing RSI hub
+var rsiHub = quotes.ToRsiHub();
+
+// reuses the existing RSI hub — does not create a second one
+var stochRsiHub = rsiHub.ToStochRsiHub();
+```
+
+This is not the standard chaining model — it is specific to the StochRSI compound hub.
+</Info>
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| StochRSI range | Signal |
+|----------------|--------|
+| Above 0.80 | Overbought — consider exit or short |
+| 0.20 – 0.80 | Neutral range |
+| Below 0.20 | Oversold — consider entry or cover |
+
+A **%K crossing above %D** while in oversold territory is a common buy trigger. Stochastic RSI oscillates faster than plain RSI, so false signals are more frequent — confirm with price action or a trend filter.
+
+<Warning>
+The first `10×R` periods carry convergence errors up to ~5% due to RSI's exponential smoothing. Prune at least `R+S+M+100` initial values before use. Call `.RemoveWarmupPeriods()` or supply sufficient history.
+</Warning>
+
+## Minimum history
+
+You must supply at least `N` periods of quotes, where `N` is the greater of `R+S+M` and `R+100`. For best precision, use at least `10×R` periods prior to your intended start date.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    The underlying RSI oscillator (0–100 scale).
+  </Card>
+  <Card title="Stochastic Oscillator" href="/indicators/oscillators/stoch">
+    Standard stochastic applied directly to price.
+  </Card>
+  <Card title="Williams %R" href="/indicators/oscillators/williams-r">
+    Fast stochastic with an inverted −100 to 0 scale.
+  </Card>
+  <Card title="True Strength Index" href="/indicators/oscillators/tsi">
+    Double-smoothed EMA momentum oscillator.
+  </Card>
+</CardGroup>

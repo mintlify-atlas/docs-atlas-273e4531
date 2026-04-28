@@ -1,0 +1,111 @@
+---
+title: "SuperTrend — ATR Trend Direction and Trailing Stop"
+description: "Detect trend direction and reversals with SuperTrend — an ATR-based indicator that provides trailing stop levels and buy/sell signals in .NET."
+---
+
+Created by Oliver Seban, the SuperTrend indicator determines the primary direction of price trends by projecting Average True Range (ATR) band thresholds above and below an HL2 midline. When price closes beyond a band, the trend flips and SuperTrend switches sides, generating a buy or sell signal. It is widely used as a trailing stop-loss mechanism and for trend-filter overlays on charts.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="10">
+  Number of periods (`N`) for the ATR calculation. Must be greater than 1. Typical values range from 7 to 14.
+</ParamField>
+
+<ParamField path="multiplier" type="double" default="3">
+  Multiplier that sets the ATR band width. Must be greater than 0. Commonly set between 2 and 3.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `SuperTrendResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="SuperTrend" type="decimal">
+  Contiguous SuperTrend line combining both Upper and Lower band segments across trend changes.
+</ResponseField>
+
+<ResponseField name="UpperBand" type="decimal">
+  Upper band value only, populated during bearish (downtrend) periods. Rendered red on charts.
+</ResponseField>
+
+<ResponseField name="LowerBand" type="decimal">
+  Lower band value only, populated during bullish (uptrend) periods. Rendered green on charts.
+</ResponseField>
+
+<Note>`UpperBand` and `LowerBand` are separated to clearly mark trend direction and reversals. `SuperTrend` is the combined continuous line you would use for stop-loss placement.</Note>
+
+## Usage
+
+```csharp
+// batch series calculation
+IReadOnlyList<SuperTrendResult> results =
+  quotes.ToSuperTrend(lookbackPeriods, multiplier);
+```
+
+<Warning>SuperTrend is not chain-enabled and cannot be piped into other chain-based indicators. It must be generated directly from `quotes`.</Warning>
+
+## Streaming
+
+Use `SuperTrendList` for incremental buffer-style calculations:
+
+```csharp
+SuperTrendList superTrendList = new(lookbackPeriods, multiplier);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  superTrendList.Add(quote);
+}
+
+// based on ICollection<SuperTrendResult>
+IReadOnlyList<SuperTrendResult> results = superTrendList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+SuperTrendHub observer = quoteHub.ToSuperTrendHub(lookbackPeriods, multiplier);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<SuperTrendResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **LowerBand is populated**: price is above the band — bullish trend is active. Use `LowerBand` as a trailing stop.
+- **UpperBand is populated**: price is below the band — bearish trend is active. Use `UpperBand` as a trailing stop.
+- **Band switches from Lower to Upper**: bearish reversal signal — consider a sell or short entry.
+- **Band switches from Upper to Lower**: bullish reversal signal — consider a buy or long entry.
+- **Smaller multiplier** (e.g., 2): more sensitive, more frequent signals with higher whipsaw risk.
+- **Larger multiplier** (e.g., 3–4): fewer, higher-confidence signals with wider stops.
+
+<Tip>Combine SuperTrend with a momentum indicator like RSI or a volume indicator like OBV to filter out low-quality reversal signals.</Tip>
+
+## Minimum history
+
+You must have at least `N+100` periods of quotes to cover warmup and ATR convergence. For optimal precision, use at least `N+250` periods prior to your intended usage date.
+
+<Warning>The line segment before the first reversal and the first `N+100` periods are unreliable due to an initial guess of trend direction and ATR convergence precision.</Warning>
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="ADX" href="/indicators/trend/adx" icon="chart-bar">
+    Measure trend strength to confirm SuperTrend signals.
+  </Card>
+  <Card title="Parabolic SAR" href="/indicators/trend/parabolic-sar" icon="chart-scatter">
+    Another trailing stop indicator from J. Welles Wilder.
+  </Card>
+  <Card title="Aroon Indicator" href="/indicators/trend/aroon" icon="chart-line">
+    Detect trend direction using high/low recency.
+  </Card>
+</CardGroup>

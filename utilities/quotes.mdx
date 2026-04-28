@@ -1,0 +1,295 @@
+---
+title: "Quote utilities for Stock Indicators .NET"
+description: "Prepare and transform historical price quotes with sorting, validation, alternate price selection, timeframe aggregation, and extended candle properties."
+---
+
+Quote utilities help you prepare and transform historical price data before feeding it into indicators. Use them to ensure correct sort order, validate data integrity, select alternate price inputs, aggregate bars to larger timeframes, and compute extended candle geometry.
+
+<CardGroup cols={2}>
+  <Card title="Sort quotes" icon="arrow-up-wide-short" href="#sort-quotes">
+    Ensure chronological order before running indicators.
+  </Card>
+  <Card title="Validate" icon="shield-check" href="#validate-quote-history">
+    Detect duplicate timestamps and malformed price data.
+  </Card>
+  <Card title="Use alternate price" icon="sliders" href="#use-alternate-price">
+    Select HL2, HLC3, OHLC4, and more as the price input.
+  </Card>
+  <Card title="Resize (aggregate)" icon="calendar-days" href="#resize-quote-history">
+    Roll up minute bars into hourly, daily, or custom periods.
+  </Card>
+  <Card title="Extended candle properties" icon="chart-candlestick" href="#extended-candle-properties">
+    Access body size, wick lengths, and bullish/bearish flags.
+  </Card>
+</CardGroup>
+
+---
+
+## Sort quotes
+
+`quotes.ToSortedList()` returns an `IReadOnlyList<TQuote>` sorted by ascending `Timestamp`. All library indicators require chronological input; use this utility whenever you cannot guarantee the sort order of your source data.
+
+```csharp
+// sort unsorted quotes
+IReadOnlyList<Quote> sortedQuotes = quotes.ToSortedList();
+
+// inline with indicators
+var results = quotes
+    .ToSortedList()
+    .ToRsi(14);
+```
+
+<AccordionGroup>
+  <Accordion title="Importing from an external API">
+    ```csharp
+    IEnumerable<Quote> importedQuotes = GetQuotesFromApi();
+
+    // ensure chronological order
+    IReadOnlyList<Quote> sortedQuotes = importedQuotes.ToSortedList();
+
+    var smaResults = sortedQuotes.ToSma(20);
+    ```
+  </Accordion>
+  <Accordion title="Merging quotes from multiple sources">
+    ```csharp
+    var combined = source1Quotes
+        .Concat(source2Quotes)
+        .ToSortedList();
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Most data providers return quotes in chronological order. Only call `ToSortedList()` when you cannot guarantee the order from your source.
+</Tip>
+
+---
+
+## Validate quote history
+
+`quotes.Validate()` performs an advanced integrity check on your `IReadOnlyList<IQuote>` and throws `InvalidQuotesException` if any problem is found.
+
+```csharp
+IReadOnlyList<Quote> validatedQuotes = quotes.Validate();
+```
+
+### What it checks
+
+- **Duplicate timestamps** — two quotes sharing the same `Timestamp` (throws `InvalidQuotesException`)
+- **Chronological order** — out-of-order entries (throws `InvalidQuotesException`)
+
+### Usage
+
+<Tabs>
+  <Tab title="Standalone">
+    ```csharp
+    try
+    {
+        IReadOnlyList<Quote> validatedQuotes = quotes.Validate();
+        // proceed with valid quotes
+    }
+    catch (InvalidQuotesException ex)
+    {
+        Console.WriteLine($"Invalid quotes: {ex.Message}");
+    }
+    ```
+  </Tab>
+  <Tab title="Chained">
+    ```csharp
+    // validate, select alternate price, then run indicator
+    var results = quotes
+        .Validate()
+        .Use(CandlePart.HL2)
+        .ToRsi(14);
+    ```
+  </Tab>
+  <Tab title="Pipeline">
+    ```csharp
+    var processedQuotes = rawData
+        .Select(TransformToQuote)
+        .ToList()
+        .Validate()   // quality gate
+        .ToSortedList();
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  `Validate()` performs thorough checks and carries a performance cost. Call it once at ingestion time, not on every indicator invocation.
+</Warning>
+
+---
+
+## Use alternate price
+
+`quotes.Use(CandlePart)` selects which price component to use as the input series for most indicators. The parameter is **required** — there is no default.
+
+```csharp
+// use HL2 (median price) instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToRsi(14);
+```
+
+### CandlePart enum
+
+| Value | Formula | Description |
+|-------|---------|-------------|
+| `Open` | Open | Opening price |
+| `High` | High | Highest price |
+| `Low` | Low | Lowest price |
+| `Close` | Close | Closing price |
+| `Volume` | Volume | Trading volume |
+| `HL2` | (High + Low) / 2 | Median price |
+| `HLC3` | (High + Low + Close) / 3 | Typical price |
+| `OC2` | (Open + Close) / 2 | Midpoint price |
+| `OHL3` | (Open + High + Low) / 3 | Average of open range |
+| `OHLC4` | (Open + High + Low + Close) / 4 | Average price |
+
+### Common patterns
+
+<CodeGroup>
+
+```csharp Median price (HL2)
+var smaResults = quotes
+    .Use(CandlePart.HL2)
+    .ToSma(20);
+```
+
+```csharp Typical price (HLC3)
+var emaResults = quotes
+    .Use(CandlePart.HLC3)
+    .ToEma(50);
+```
+
+</CodeGroup>
+
+<Warning>
+  Some indicators require the full OHLCV profile (ATR, Stochastic, OBV, candlestick patterns) and cannot be used with `Use()`. Passing an incompatible `CandlePart` will produce incorrect results.
+</Warning>
+
+---
+
+## Resize quote history
+
+`quotes.Aggregate()` rolls up intraday bars into larger timeframes. Two overloads are available: one accepts a `PeriodSize` enum value, the other accepts any `TimeSpan`.
+
+```csharp
+// using PeriodSize enum
+IReadOnlyList<Quote> aggregatedQuotes = quotes.Aggregate(PeriodSize.OneHour);
+
+// using a custom TimeSpan
+IReadOnlyList<Quote> aggregatedQuotes = quotes.Aggregate(TimeSpan.FromMinutes(45));
+```
+
+### PeriodSize options
+
+| Value | Description |
+|-------|-------------|
+| `PeriodSize.OneMinute` | 1-minute bars |
+| `PeriodSize.TwoMinutes` | 2-minute bars |
+| `PeriodSize.ThreeMinutes` | 3-minute bars |
+| `PeriodSize.FiveMinutes` | 5-minute bars |
+| `PeriodSize.FifteenMinutes` | 15-minute bars |
+| `PeriodSize.ThirtyMinutes` | 30-minute bars |
+| `PeriodSize.OneHour` | 1-hour bars |
+| `PeriodSize.TwoHours` | 2-hour bars |
+| `PeriodSize.FourHours` | 4-hour bars |
+| `PeriodSize.Day` | Daily bars |
+| `PeriodSize.Week` | Weekly bars |
+| `PeriodSize.Month` | Monthly bars |
+
+### How bars are combined
+
+| Field | Rule |
+|-------|------|
+| `Open` | First bar's open in the period |
+| `High` | Maximum high across all bars |
+| `Low` | Minimum low across all bars |
+| `Close` | Last bar's close in the period |
+| `Volume` | Sum of all volume in the period |
+| `Timestamp` | Start of the aggregation period |
+
+### Multi-timeframe example
+
+```csharp
+// 15-minute short-term trend
+var shortTermTrend = minuteQuotes
+    .Aggregate(PeriodSize.FifteenMinutes)
+    .ToEma(20);
+
+// 4-hour long-term trend
+var longTermTrend = minuteQuotes
+    .Aggregate(PeriodSize.FourHours)
+    .ToEma(20);
+```
+
+<Warning>
+  Partial periods at market open/close can be misleading. A single 4:00 PM minute bar aggregated into a 15-minute period produces a 15-minute bar containing only one minute of data. Filter out partial periods before backtesting.
+</Warning>
+
+---
+
+## Extended candle properties
+
+`quotes.ToCandles()` (or `quote.ToCandle()` for a single bar) converts quotes into `CandleProperties` objects with pre-calculated geometric measurements.
+
+```csharp
+// single quote
+CandleProperties candle = quote.ToCandle();
+
+// full collection
+IReadOnlyList<CandleProperties> candles = quotes.ToCandles();
+```
+
+### CandleProperties members
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `BodySize` | `decimal` | Absolute difference between Open and Close |
+| `BodyPct` | `decimal` | Body size as a percentage of total range |
+| `UpperWick` | `decimal` | Distance from the top of the body to High |
+| `LowerWick` | `decimal` | Distance from the bottom of the body to Low |
+| `Range` | `decimal` | High − Low |
+| `IsBullish` | `bool` | `true` when Close > Open |
+| `IsBearish` | `bool` | `true` when Open > Close |
+
+All original OHLCV fields and `Timestamp` are also present.
+
+### Usage examples
+
+<Tabs>
+  <Tab title="Filter large-body candles">
+    ```csharp
+    var candles = quotes.ToCandles();
+
+    var largeBullish = candles
+        .Where(c => c.BodyPct > 0.7m)  // body > 70% of range
+        .Where(c => c.IsBullish);
+    ```
+  </Tab>
+  <Tab title="Identify hammer patterns">
+    ```csharp
+    var candles = quotes.ToCandles();
+
+    // long lower wick, small upper wick
+    var hammers = candles
+        .Where(c => c.LowerWick > c.BodySize * 2)
+        .Where(c => c.UpperWick < c.BodySize * 0.5m);
+    ```
+  </Tab>
+  <Tab title="Access basic properties">
+    ```csharp
+    CandleProperties candle = quote.ToCandle();
+
+    decimal bodySize  = candle.BodySize;
+    decimal upperWick = candle.UpperWick;
+    decimal lowerWick = candle.LowerWick;
+    bool isBullish    = candle.IsBullish;
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Cache the result of `ToCandles()` when you need to access candle properties multiple times on the same dataset — each call recomputes the measurements.
+</Tip>

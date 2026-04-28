@@ -1,0 +1,108 @@
+---
+title: "Commodity Channel Index (CCI) Indicator"
+description: "Calculate CCI to measure how far price deviates from its statistical mean. Useful for identifying cyclical trends and overbought/oversold extremes."
+---
+
+The Commodity Channel Index (CCI), developed by Donald Lambert, measures the deviation of a security's typical price from its simple moving average, normalized by the mean absolute deviation. Despite its name it is applicable to any asset class. CCI oscillates above and below zero without fixed bounds, but readings above +100 and below −100 are traditionally treated as overbought and oversold signals respectively. The indicator is also used to identify cyclical price patterns and divergence.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods `N` in the moving average window. Must be greater than 0. Default is **20**.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<CciResult> results = quotes.ToCci(lookbackPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Cci" type="double | null">
+  Commodity Channel Index value. `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<CciResult> results = quotes.ToCci(lookbackPeriods);
+```
+
+Chain further indicators on the `Cci` output value:
+
+```csharp
+var results = quotes
+    .ToCci(20)
+    .ToSlope(5);
+```
+
+<Note>
+CCI must be generated directly from `quotes`. It cannot be chained from the output of another indicator.
+</Note>
+
+## Streaming
+
+Use `CciList` for incremental updates without a hub:
+
+```csharp
+CciList cciList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  cciList.Add(quote);
+}
+
+// based on ICollection<CciResult>
+IReadOnlyList<CciResult> results = cciList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+CciHub observer = quoteHub.ToCciHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<CciResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| CCI value | Signal |
+|-----------|--------|
+| Above +100 | Overbought or start of a strong uptrend |
+| 0 to +100 | Weak bullish range |
+| −100 to 0 | Weak bearish range |
+| Below −100 | Oversold or start of a strong downtrend |
+
+A move above +100 from below signals a new bull cycle; a drop below −100 from above signals a new bear cycle. CCI divergence — where price makes a new extreme but CCI does not — frequently precedes reversals. The constant factor of 0.015 in the CCI formula ensures roughly 70–80% of values fall within ±100 under normal market conditions.
+
+## Minimum history
+
+You must supply at least `N+1` periods of quotes to cover the warmup period.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Bounded momentum oscillator (0–100 scale).
+  </Card>
+  <Card title="Williams %R" href="/indicators/oscillators/williams-r">
+    Price-range momentum with −100 to 0 scale.
+  </Card>
+  <Card title="Stochastic Oscillator" href="/indicators/oscillators/stoch">
+    Close-to-range momentum on a 0–100 scale.
+  </Card>
+  <Card title="Ultimate Oscillator" href="/indicators/oscillators/ultimate">
+    Multi-period buying-pressure oscillator.
+  </Card>
+</CardGroup>

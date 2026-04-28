@@ -1,0 +1,120 @@
+---
+title: "Average Directional Index (ADX) — Trend Indicators"
+description: "Measure trend strength with ADX, the Average Directional Index. Includes +DI, -DI, DX, and ADXR directional movement components for .NET."
+---
+
+The Average Directional Index (ADX), created by J. Welles Wilder, is part of the Directional Movement system (DMI). It combines the Positive Directional Indicator (+DI), Negative Directional Indicator (−DI), and the Directional Index (DX) to quantify how strong a price trend is — regardless of its direction. ADX values above 25 typically signal a trending market, while values below 20 suggest ranging conditions.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="14">
+  Number of periods (`N`) for the ADX smoothing calculation. Must be greater than 1. Typical values range from 10 to 20.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is an `AdxResult` with the following fields:
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Pdi" type="double">
+  Plus Directional Index (+DI). Measures upward price movement pressure.
+</ResponseField>
+
+<ResponseField name="Mdi" type="double">
+  Minus Directional Index (−DI). Measures downward price movement pressure.
+</ResponseField>
+
+<ResponseField name="Dx" type="double">
+  Directional Index (DX). The raw directional movement ratio before smoothing.
+</ResponseField>
+
+<ResponseField name="Adx" type="double">
+  Average Directional Index. The smoothed trend strength value ranging from 0 to 100.
+</ResponseField>
+
+<ResponseField name="Adxr" type="double">
+  Average Directional Index Rating (ADXR). A further smoothed version of ADX.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series calculation
+IReadOnlyList<AdxResult> results =
+  quotes.ToAdx(lookbackPeriods);
+```
+
+You can also chain ADX results into further indicators using the `Adx` value:
+
+```csharp
+// chaining example
+var results = quotes
+    .ToAdx(14)
+    .ToRsi(14);
+```
+
+## Streaming
+
+Use `AdxList` for incremental buffer-style calculations:
+
+```csharp
+AdxList adxList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  adxList.Add(quote);
+}
+
+// based on ICollection<AdxResult>
+IReadOnlyList<AdxResult> results = adxList;
+```
+
+For real-time hub-based streaming, subscribe to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+AdxHub observer = quoteHub.ToAdxHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<AdxResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **ADX below 20**: market is in a weak or ranging trend — consider range-bound strategies.
+- **ADX 20–25**: trend is developing; watch for a confirmed breakout.
+- **ADX above 25**: a strong trend is in place; trend-following strategies are more reliable.
+- **ADX above 40–50**: extremely strong trend that may be nearing exhaustion.
+- **+DI above −DI**: bullish trend is dominant; +DI crossing above −DI is a buy signal.
+- **−DI above +DI**: bearish trend is dominant; −DI crossing above +DI is a sell signal.
+
+<Tip>ADX measures trend **strength**, not direction. Always consult +DI and −DI together to determine which way the trend is pointing.</Tip>
+
+## Minimum history
+
+You must have at least `2×N+100` periods of quotes to cover warmup and convergence periods. For better precision, use at least `2×N+250` data points prior to your intended usage date.
+
+<Warning>The first `2×N+100` periods will have decreasing-magnitude convergence errors that can be as high as ~5% deviation in indicator values for earlier periods.</Warning>
+
+## See also
+
+<CardGroup cols={3}>
+  <Card title="Aroon Indicator" href="/indicators/trend/aroon" icon="chart-line">
+    Oscillator-based trend detection using highs and lows.
+  </Card>
+  <Card title="SuperTrend" href="/indicators/trend/super-trend" icon="arrow-trend-up">
+    ATR-based trend direction and reversal signals.
+  </Card>
+  <Card title="Parabolic SAR" href="/indicators/trend/parabolic-sar" icon="chart-scatter">
+    Price-time stop and reverse trend indicator.
+  </Card>
+</CardGroup>

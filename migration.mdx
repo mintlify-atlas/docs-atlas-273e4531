@@ -1,0 +1,332 @@
+---
+title: "Migrating from Stock Indicators v2 to v3"
+description: "Complete v2 to v3 migration guide covering breaking API changes, renamed types, removed utilities, null handling updates, and new streaming capabilities."
+---
+
+Version 3 of Stock Indicators for .NET introduces streaming capabilities, immutable record types, and several API renames. This guide covers every breaking change with before/after examples and a quick-reference table to help you upgrade with confidence.
+
+<Warning>
+  v3 is a **major version** with breaking changes. Review all sections below before upgrading a production codebase.
+</Warning>
+
+---
+
+## Summary of breaking changes
+
+<AccordionGroup>
+  <Accordion title="Method naming — GetX() renamed to ToX()">
+    All static time-series API methods are renamed from `GetX()` to `ToX()`.
+
+    ```csharp
+    var smaResults = quotes.GetSma(20); // v2
+    var smaResults = quotes.ToSma(20);  // v3
+    ```
+  </Accordion>
+
+  <Accordion title="Quote types and interfaces">
+    - `Quote` is now an immutable `record` type
+    - `IQuote.Date` is renamed to `IQuote.Timestamp`
+    - Custom quote types must implement `IReusable`
+    - `IReusableResult` is renamed to `IReusable`
+    - `IReusable.Value` is non-nullable; returns `double.NaN` instead of `null`
+  </Accordion>
+
+  <Accordion title="Indicator return types">
+    - All indicator results changed from `sealed class` to immutable `record` types
+    - `UseResult` renamed to `TimeValue`
+    - `AtrStopResult` values changed from `decimal` to `double`
+    - `UlcerIndexResult.UI` property renamed to `UlcerIndex`
+    - `SmaAnalysis` model renamed to `SmaAnalysisResult`
+  </Accordion>
+
+  <Accordion title="Removed and deprecated features">
+    - `GetBaseQuote()` indicator removed (use `Use(CandlePart)` instead)
+    - `SyncSeries()` utility removed along with `SyncType` enum
+    - `Find()` and `FindIndex()` utilities removed (use LINQ)
+    - `ToTupleCollection()` deprecated
+    - `ToCollection()` deprecated
+    - `Numerixs` class renamed to `Numerical`
+    - `Use()` — `candlePart` parameter is now required (no default value)
+    - `Use()` return type changed to `IReadOnlyList<TimeValue>`
+  </Accordion>
+
+  <Accordion title="Mathematical corrections">
+    **ADXR** — fixed an off-by-one error in the lookback period. The first ADXR value now appears one period later than in v2, and values will differ slightly.
+
+    ```csharp
+    // v2 — first non-null ADXR at index 40 (lookbackPeriods = 14)
+    var adxResults = quotes.GetAdx(14);
+    var firstAdxr  = adxResults[40].Adxr; // not null
+
+    // v3 — first non-NaN ADXR at index 41
+    var adxResults = quotes.ToAdx(14);
+    var firstAdxr  = adxResults[41].Adxr; // not NaN
+    // adxResults[40].Adxr is now NaN
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Step-by-step migration
+
+<Steps>
+  <Step title="Update method names">
+    Replace every `GetX()` call with `ToX()`:
+
+    ```csharp
+    var smaResults = quotes.GetSma(20); // [!code --]
+    var smaResults = quotes.ToSma(20);  // [!code ++]
+    ```
+  </Step>
+
+  <Step title="Rename IQuote.Date to IQuote.Timestamp">
+    ```csharp
+    public class MyQuote : IQuote
+    {
+        public DateTime Date { get; set; }      // [!code --]
+        public DateTime Timestamp { get; set; } // [!code ++]
+        public decimal Open { get; set; }
+        public decimal High { get; set; }
+        public decimal Low { get; set; }
+        public decimal Close { get; set; }
+        public decimal Volume { get; set; }
+    }
+    ```
+  </Step>
+
+  <Step title="Update custom quote types">
+    Change custom quote types to `record`, or implement value-based equality:
+
+    <Tabs>
+      <Tab title="Option 1: Use record">
+        ```csharp
+        // v3 — simplest approach
+        public record MyQuote : IQuote
+        {
+            public DateTime Timestamp { get; init; }
+            public decimal Open  { get; init; }
+            public decimal High  { get; init; }
+            public decimal Low   { get; init; }
+            public decimal Close { get; init; }
+            public decimal Volume { get; init; }
+        }
+        ```
+      </Tab>
+      <Tab title="Option 2: Value-based equality">
+        ```csharp
+        // v3 — implement value-based equality on a class
+        public class MyQuote : IQuote, IEquatable<MyQuote>
+        {
+            public DateTime Timestamp { get; set; }
+            public decimal Open  { get; set; }
+            public decimal High  { get; set; }
+            public decimal Low   { get; set; }
+            public decimal Close { get; set; }
+            public decimal Volume { get; set; }
+
+            public bool Equals(MyQuote? other) => /* ... */;
+            public override int GetHashCode() => /* ... */;
+        }
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Add the candlePart argument to Use()">
+    The `candlePart` parameter is now required:
+
+    ```csharp
+    // v2 — defaulted to Close
+    var quoteParts = quotes.Use();
+
+    // v3 — must be explicit
+    var quoteParts = quotes.Use(CandlePart.Close);
+    ```
+
+    Handle the new `IReadOnlyList<TimeValue>` return type:
+
+    ```csharp
+    // v2
+    var (timestamp, value) = quotes.Use(CandlePart.Close);
+
+    // v3
+    IReadOnlyList<TimeValue> quoteParts = quotes.Use(CandlePart.Close);
+    ```
+  </Step>
+
+  <Step title="Replace null checks with double.IsNaN()">
+    `IReusable.Value` is now `double` and uses `NaN` for undefined values:
+
+    ```csharp
+    // v2
+    if (result.Value != null)
+    {
+        decimal value = result.Value.Value;
+    }
+
+    // v3
+    if (!double.IsNaN(result.Value))
+    {
+        double value = result.Value;
+    }
+    ```
+  </Step>
+
+  <Step title="Update renamed class references">
+    | v2 | v3 |
+    |----|----|
+    | `Numerixs` | `Numerical` |
+    | `UseResult` | `TimeValue` |
+    | `SmaAnalysis` | `SmaAnalysisResult` |
+    | `UlcerIndexResult.UI` | `UlcerIndexResult.UlcerIndex` |
+  </Step>
+
+  <Step title="Remove deprecated utilities">
+    | Removed utility | Replacement |
+    |----------------|-------------|
+    | `SyncSeries()` | Align data manually |
+    | `Find()` | `.FirstOrDefault(r => r.Timestamp == date)` |
+    | `FindIndex()` | `.Select((item, i) => (item, i)).FirstOrDefault(...)` |
+    | `GetBaseQuote()` | `Use(CandlePart)` |
+  </Step>
+</Steps>
+
+---
+
+## New in v3: streaming capabilities
+
+v3 introduces three calculation styles. All three produce identical numerical results, so you can switch between them without concern for numerical differences.
+
+### Series style — batch processing (unchanged from v2)
+
+Process a complete historical dataset and receive all results at once. This is the same pattern as v2 and remains the default for backtesting and historical analysis.
+
+```csharp
+IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+```
+
+**Best for:** Backtesting, one-time calculations, complete historical datasets.
+
+### BufferList style — incremental processing (new in v3)
+
+Efficient incremental calculations without re-processing the entire history on each new bar.
+
+```csharp
+SmaList smaList = new(20);
+
+foreach (IQuote quote in quotes)  // simulating a live stream
+{
+    smaList.Add(quote);
+}
+
+IReadOnlyList<SmaResult> results = smaList;
+```
+
+**Migration example** — replacing the v2 re-calculation pattern:
+
+```csharp
+// v2 — recalculates the entire series on every new bar
+List<Quote> quotes = new();
+foreach (Quote newQuote in stream)
+{
+    quotes.Add(newQuote);
+    var results = quotes.ToSma(20);  // expensive!
+}
+
+// v3 BufferList — only processes the new bar
+SmaList smaList = new(20);
+foreach (Quote newQuote in stream)
+{
+    smaList.Add(newQuote);
+
+    if (smaList.Count > 0)
+    {
+        SmaResult latest = smaList[^1];
+        // use latest result
+    }
+}
+```
+
+**Best for:** Growing datasets with frequent appends, memory-efficient incremental processing.
+
+### StreamHub style — real-time observable patterns (new in v3)
+
+Observable hub infrastructure that propagates a single quote update to all subscribed indicators simultaneously.
+
+```csharp
+QuoteHub quoteHub = new();
+
+EmaHub emaFast = quoteHub.ToEmaHub(50);
+EmaHub emaSlow = quoteHub.ToEmaHub(200);
+
+// a single Add() updates both hubs in sync
+quoteHub.Add(newQuote);
+
+if (emaFast.Results[^2].Ema < emaSlow.Results[^2].Ema
+ && emaFast.Results[^1].Ema > emaSlow.Results[^1].Ema)
+{
+    // EMA crossover occurred
+}
+```
+
+**Migration example** — replacing v2 multi-indicator re-calculation:
+
+```csharp
+// v2 — three separate full recalculations on every new bar
+List<Quote> quotes = new();
+foreach (Quote newQuote in stream)
+{
+    quotes.Add(newQuote);
+    var smaResults  = quotes.ToSma(20);
+    var rsiResults  = quotes.ToRsi(14);
+    var macdResults = quotes.ToMacd();
+}
+
+// v3 StreamHub — single Add() propagates to all observers
+QuoteHub quoteHub = new();
+var smaHub  = quoteHub.ToSma(20);
+var rsiHub  = quoteHub.ToRsi(14);
+var macdHub = quoteHub.ToMacd();
+
+foreach (Quote newQuote in stream)
+{
+    quoteHub.Add(newQuote);  // all three hubs update automatically
+}
+```
+
+**Best for:** Live data feeds, WebSocket integration, multiple coordinated indicators, low-latency trading applications.
+
+### Performance comparison
+
+| Style | Overhead vs. Series | Use case |
+|-------|--------------------|-----------| 
+| Series | baseline | Batch / backtesting |
+| BufferList | ~10–20% | Incremental updates |
+| StreamHub | ~20–30% | Real-time / multi-indicator |
+
+---
+
+## Quick reference
+
+| v2 API | v3 API | Notes |
+|--------|--------|-------|
+| `quotes.GetSma(20)` | `quotes.ToSma(20)` | Method prefix changed |
+| `IQuote.Date` | `IQuote.Timestamp` | Property renamed |
+| `quotes.Use()` | `quotes.Use(CandlePart.Close)` | Parameter now required |
+| `result.Value == null` | `double.IsNaN(result.Value)` | Null → NaN |
+| `Numerixs` | `Numerical` | Class renamed |
+| `UseResult` | `TimeValue` | Type renamed |
+| `SmaAnalysis` | `SmaAnalysisResult` | Type renamed |
+| `UlcerIndexResult.UI` | `UlcerIndexResult.UlcerIndex` | Property renamed |
+| `SyncSeries()` | (removed) | Align manually |
+| `Find()` / `FindIndex()` | LINQ `.FirstOrDefault()` | Use standard LINQ |
+| `GetBaseQuote()` | `Use(CandlePart)` | Use utility instead |
+
+---
+
+## Need help?
+
+- [Getting started guide](/quickstart) — Introduction to v3
+- [GitHub Discussions](https://github.com/DaveSkender/Stock.Indicators/discussions) — Ask questions and share ideas
+- [GitHub Issues](https://github.com/DaveSkender/Stock.Indicators/issues) — Report bugs or request features

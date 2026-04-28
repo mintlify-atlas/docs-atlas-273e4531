@@ -1,0 +1,145 @@
+---
+title: "Bollinger Bands: Volatility Price Channels"
+description: "Bollinger Bands plot standard deviation envelopes around an SMA to identify volatility expansions, squeeze setups, and mean-reversion opportunities."
+---
+
+Created by John Bollinger, [Bollinger Bands](https://en.wikipedia.org/wiki/Bollinger_Bands) measure market volatility by placing upper and lower bands a configurable number of standard deviations away from a simple moving average of price. When the bands widen, volatility is expanding; when they contract into a squeeze, a breakout move is often imminent. Bollinger Bands® is a registered trademark of John A. Bollinger.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="20">
+  Number of periods (`N`) for the SMA center line. Must be greater than 1. A statistically meaningful sample — typically 20 — is strongly recommended.
+</ParamField>
+
+<ParamField path="standardDeviations" type="double" default="2">
+  Band width expressed as standard deviations (`D`) from the moving average. Must be greater than 0.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `BollingerBandsResult` with the following fields.
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date corresponding to the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Sma" type="double">
+  Simple moving average of price over `N` periods — the center line.
+</ResponseField>
+
+<ResponseField name="UpperBand" type="double">
+  `D` standard deviations above the SMA.
+</ResponseField>
+
+<ResponseField name="LowerBand" type="double">
+  `D` standard deviations below the SMA.
+</ResponseField>
+
+<ResponseField name="PercentB" type="double">
+  Location of price within the bands: `(Price - LowerBand) / (UpperBand - LowerBand)`. Values above 1 or below 0 indicate price outside the bands.
+</ResponseField>
+
+<ResponseField name="ZScore" type="double">
+  Number of standard deviations the current price is from the mean.
+</ResponseField>
+
+<ResponseField name="Width" type="double">
+  Band width as a fraction of the SMA: `(UpperBand - LowerBand) / Sma`. Useful for measuring squeeze conditions.
+</ResponseField>
+
+## Usage
+
+Call `ToBollingerBands()` on any `IEnumerable<TQuote>` to compute the full series in a single batch pass.
+
+```csharp
+IReadOnlyList<BollingerBandsResult> results =
+    quotes.ToBollingerBands(lookbackPeriods, standardDeviations);
+```
+
+Bollinger Bands can also be computed from a transformed price source or chained with another indicator on the `PercentB` output:
+
+```csharp
+// compute bands on HL2 midpoint price
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToBollingerBands(20, 2);
+
+// chain RSI onto the %B signal
+var rsiOfPercentB = quotes
+    .ToBollingerBands(20, 2)
+    .ToRsi(14);
+```
+
+<Tip>
+  See [Chaining indicators](/guide/batch#chaining-indicators) for the full guide on composing indicator pipelines.
+</Tip>
+
+## Streaming
+
+Use `BollingerBandsList` when you need incremental results without a hub — for example, processing a live feed one quote at a time.
+
+```csharp
+BollingerBandsList bbList = new(lookbackPeriods, standardDeviations);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    bbList.Add(quote);
+}
+
+// read as IReadOnlyList<BollingerBandsResult>
+IReadOnlyList<BollingerBandsResult> results = bbList;
+```
+
+For pub/sub architectures, subscribe an observer to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+BollingerBandsHub observer =
+    quoteHub.ToBollingerBandsHub(lookbackPeriods, standardDeviations);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<BollingerBandsResult> results = observer.Results;
+```
+
+<Note>
+  See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for complete streaming guides.
+</Note>
+
+## Interpretation
+
+Bollinger Bands do not generate directional signals on their own — they contextualize price relative to recent volatility:
+
+- **Touch or breach of the upper band** suggests the market is relatively overbought; combined with a reversal candlestick it can signal a short entry.
+- **Touch or breach of the lower band** suggests oversold conditions and a potential long setup.
+- **%B > 1** means price is above the upper band; **%B < 0** means price is below the lower band.
+- **Width squeeze** (narrow bands after a prolonged period of low volatility) often precedes a significant directional breakout.
+- **Walking the bands** — when price repeatedly touches or exceeds one band — indicates a strong trend and should not be faded immediately.
+
+<Tip>
+  Combine with a momentum indicator such as RSI or MACD to filter false reversal signals at the bands.
+</Tip>
+
+## Minimum history
+
+You must supply at least `N` periods of quotes. For statistically sound results, use a full lookback window well beyond the warm-up period — the library suggests `N` periods minimum, but more is always better.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Keltner Channels" icon="chart-line" href="/indicators/channels/keltner">
+    ATR-based bands around an EMA center line.
+  </Card>
+  <Card title="STARC Bands" icon="chart-line" href="/indicators/channels/starc-bands">
+    ATR-based bands around an SMA center line.
+  </Card>
+  <Card title="Standard Deviation Channels" icon="chart-line" href="/indicators/channels/std-dev-channels">
+    Linear-regression channels with std-dev band widths.
+  </Card>
+  <Card title="Donchian Channels" icon="chart-line" href="/indicators/channels/donchian">
+    Highest-high / lowest-low price channel.
+  </Card>
+</CardGroup>

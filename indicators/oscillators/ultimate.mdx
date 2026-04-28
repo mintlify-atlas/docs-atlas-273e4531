@@ -1,0 +1,126 @@
+---
+title: "Ultimate Oscillator – Multi-Period Momentum Indicator"
+description: "Calculate the Ultimate Oscillator to weigh buying pressure across three timeframes. Returns a 0–100 oscillator with reduced false divergence signals."
+---
+
+The Ultimate Oscillator, developed by Larry Williams, combines buying pressure measurements across three different timeframes (short, medium, and long) into a single weighted oscillator on a 0 to 100 scale. By incorporating multiple lookback periods, it aims to reduce the false divergence signals that plague single-period oscillators. Values above 70 indicate overbought conditions; values below 30 indicate oversold conditions.
+
+## Parameters
+
+<ParamField path="shortPeriods" type="int" required>
+  Number of periods `S` for the short-term average. Must be greater than 0. Default is **7**.
+</ParamField>
+
+<ParamField path="middlePeriods" type="int" required>
+  Number of periods `M` for the medium-term average. Must be greater than `shortPeriods`. Default is **14**.
+</ParamField>
+
+<ParamField path="longPeriods" type="int" required>
+  Number of periods `L` for the long-term average. Must be greater than `middlePeriods`. Default is **28**.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<UltimateResult> results =
+  quotes.ToUltimate(shortPeriods, middlePeriods, longPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Ultimate" type="double | null">
+  Ultimate Oscillator value on a 0–100 scale. `null` for the first `L-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<UltimateResult> results =
+  quotes.ToUltimate(shortPeriods, middlePeriods, longPeriods);
+```
+
+Chain further indicators on the `Ultimate` output value:
+
+```csharp
+var results = quotes
+    .ToUltimate(7, 14, 28)
+    .ToSlope(5);
+```
+
+<Note>
+The Ultimate Oscillator must be generated directly from `quotes`. It cannot be chained from the output of another indicator.
+</Note>
+
+## Streaming
+
+Use `UltimateList` for incremental updates without a hub:
+
+```csharp
+UltimateList ultimateList = new(shortPeriods, middlePeriods, longPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  ultimateList.Add(quote);
+}
+
+// based on ICollection<UltimateResult>
+IReadOnlyList<UltimateResult> results = ultimateList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+UltimateHub observer = quoteHub.ToUltimateHub(shortPeriods, middlePeriods, longPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<UltimateResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| Ultimate value | Signal |
+|----------------|--------|
+| Above 70 | Overbought — watch for bearish divergence |
+| 30 – 70 | Neutral range |
+| Below 30 | Oversold — watch for bullish divergence |
+
+Williams's original trading rules require **confirmed divergence** before acting:
+
+- **Bullish**: price makes a new low but the Ultimate Oscillator does not, and the oscillator subsequently rises above the high reached between the two price lows.
+- **Bearish**: price makes a new high but the Ultimate Oscillator does not, and the oscillator subsequently falls below the low reached between the two price highs.
+
+Simple overbought/oversold readings without divergence confirmation produce less reliable signals.
+
+<Tip>
+The three-period weighting (4×short + 2×medium + 1×long by default) gives the most recent timeframe the greatest influence. Adjust `shortPeriods`, `middlePeriods`, and `longPeriods` together to shift the sensitivity balance.
+</Tip>
+
+## Minimum history
+
+You must supply at least `L+1` periods of quotes to cover the warmup period.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Single-period gain/loss oscillator (0–100).
+  </Card>
+  <Card title="CCI" href="/indicators/oscillators/cci">
+    Deviation from typical price range.
+  </Card>
+  <Card title="Williams %R" href="/indicators/oscillators/williams-r">
+    Single-period range momentum (−100 to 0).
+  </Card>
+  <Card title="Stochastic Oscillator" href="/indicators/oscillators/stoch">
+    Close-to-range momentum with signal line.
+  </Card>
+</CardGroup>

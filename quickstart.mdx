@@ -1,81 +1,132 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
-icon: 'rocket'
+title: "Quickstart: Calculate your first indicator"
+description: "Install Skender.Stock.Indicators, provide OHLCV quotes, and calculate a Simple Moving Average in under five minutes with this step-by-step guide."
+icon: "rocket"
 ---
 
-## Get started in three steps
+Install the library, provide your price data, and get indicator results with just a few lines of C#. This guide walks through every step from package installation to iterating results.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Install the NuGet package">
+    Add `Skender.Stock.Indicators` to your .NET project using your preferred tool.
 
-### Step 1: Set up your local environment
+    <CodeGroup>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash dotnet CLI
+    dotnet add package Skender.Stock.Indicators
+    ```
 
-### Step 2: Deploy your changes
+    ```powershell Package Manager
+    Install-Package Skender.Stock.Indicators
+    ```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    </CodeGroup>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    The package targets .NET 8, 9, and 10. No additional dependencies are required.
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Provide historical quote data">
+    Most indicators require a series of OHLCV (Open, High, Low, Close, Volume) price quotes. The library does not supply market data — you must fetch it from your own source.
 
-### Step 3: Go live
+    Quotes are provided as an `IReadOnlyList<Quote>`, `List<Quote>`, or `ICollection<Quote>`. Each `Quote` has six properties:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    | Property    | Type       | Description  |
+    | ----------- | ---------- | ------------ |
+    | `Timestamp` | `DateTime` | Close date   |
+    | `Open`      | `decimal`  | Open price   |
+    | `High`      | `decimal`  | High price   |
+    | `Low`       | `decimal`  | Low price    |
+    | `Close`     | `decimal`  | Close price  |
+    | `Volume`    | `decimal`  | Volume       |
+
+    ```csharp
+    using Skender.Stock.Indicators;
+
+    // fetch quotes from your own data source
+    IReadOnlyList<Quote> quotes = GetQuotesFromFeed("MSFT");
+    ```
+
+    <Tip>
+      As a general rule, provide at least 750 data points (roughly 3 years of daily data). Many indicators use smoothing algorithms that require more history than the stated minimum to converge to accurate values.
+    </Tip>
+  </Step>
+
+  <Step title="Calculate an indicator">
+    Call the extension method for the indicator you need. Pass any required parameters — default values are provided where an industry standard exists.
+
+    ```csharp
+    // calculate 20-period Simple Moving Average
+    IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+    ```
+
+    Every indicator follows the same pattern: `quotes.To{IndicatorName}(parameters)`. The result is always an `IReadOnlyList<T>` aligned to the input quote series.
+  </Step>
+
+  <Step title="Iterate the results">
+    Each result entry corresponds to one quote period and contains a `Timestamp` plus the indicator-specific output values. Values are `null` for periods in the warmup window before enough history exists to calculate.
+
+    ```csharp
+    foreach (SmaResult r in results)
+    {
+        Console.WriteLine($"SMA on {r.Timestamp:d} was ${r.Sma:N4}");
+    }
+    ```
+
+    Example output:
+
+    ```console
+    SMA on 4/19/2018 was $255.0590
+    SMA on 4/20/2018 was $255.2015
+    SMA on 4/23/2018 was $255.6135
+    SMA on 4/24/2018 was $255.5105
+    SMA on 4/25/2018 was $255.6570
+    SMA on 4/26/2018 was $255.9705
+    ..
+    ```
+  </Step>
+
+  <Step title="Remove warmup periods (optional)">
+    Results include early entries where the indicator has not yet accumulated enough data. Filter these out with `RemoveWarmupPeriods()` when you only want fully-calculated values.
+
+    ```csharp
+    IReadOnlyList<SmaResult> results = quotes
+        .ToSma(20)
+        .RemoveWarmupPeriods();
+    ```
+
+    <Warning>
+      Do not rely on the minimum quote requirement as an optimization target. Smoothed indicators (EMA, ATR, RSI, etc.) converge to precise values only after significantly more history than the technical minimum. Provide as much history as you have and let `RemoveWarmupPeriods()` trim the output.
+    </Warning>
+  </Step>
+</Steps>
+
+## Complete example
+
+```csharp
+using Skender.Stock.Indicators;
+
+// step 1: fetch historical quotes from your data source
+IReadOnlyList<Quote> quotes = GetQuotesFromFeed("MSFT");
+
+// step 2: calculate 20-period SMA
+IReadOnlyList<SmaResult> results = quotes
+    .ToSma(20)
+    .RemoveWarmupPeriods();
+
+// step 3: use the results
+foreach (SmaResult r in results)
+{
+    Console.WriteLine($"SMA on {r.Timestamp:d} was ${r.Sma:N4}");
+}
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Guide and API styles" icon="book" href="/guide/overview">
+    Learn about batch, buffer, and streaming APIs; chaining; custom indicators; and performance guidance.
+  </Card>
+  <Card title="Browse all indicators" icon="list" href="/indicators">
+    Explore all 84+ indicators with parameters, result types, and usage examples.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

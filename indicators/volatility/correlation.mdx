@@ -1,0 +1,112 @@
+---
+title: "Correlation Coefficient: Pearson R between two series"
+description: "Pearson Correlation Coefficient measures the linear relationship between two price series. Outputs Correlation R, R-Squared, Variance, and Covariance."
+---
+
+Created by Karl Pearson, the Correlation Coefficient quantifies the degree of linear relationship between two historical price series over a rolling lookback window. A value of +1 means perfect positive correlation, −1 means perfect inverse correlation, and 0 means no linear relationship. R-Squared, Variance, and Covariance are also computed and returned alongside the correlation value, making this useful for portfolio analysis, pair trading, and factor research.
+
+## Parameters
+
+<ParamField path="quotesB" type="IReadOnlyList<TQuote>" required>
+  Historical quotes for the second series (B). Must have at least the same matching date elements as `quotesA`. Mismatched histories will throw an `InvalidQuotesException`.
+</ParamField>
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the rolling lookback window. Must be greater than 0. A larger period is recommended for a statistically meaningful sample size.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N` periods for both quote series. Both series must share consistent date alignment.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="VarianceA" type="double">
+  Variance of series A over the lookback window.
+</ResponseField>
+
+<ResponseField name="VarianceB" type="double">
+  Variance of series B over the lookback window.
+</ResponseField>
+
+<ResponseField name="Covariance" type="double">
+  Covariance of A and B over the lookback window.
+</ResponseField>
+
+<ResponseField name="Correlation" type="double">
+  Pearson Correlation Coefficient (`R`). Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+<ResponseField name="RSquared" type="double">
+  R-Squared (R²), also known as the Coefficient of Determination. Computed as the square of `Correlation` using a simple linear regression model.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series
+IReadOnlyList<CorrResult> results =
+    quotesA.ToCorrelation(quotesB, lookbackPeriods);
+```
+
+## Streaming
+
+Streaming is not supported for Correlation. This indicator requires two synchronized quote series, which cannot be expressed in the single-series streaming model. Use the batch implementation with periodic recalculation instead.
+
+## Chaining
+
+Correlation can be generated from any chain-enabled indicator or method. Both series must contain the same number of elements when chaining:
+
+```csharp
+var results = quotesA
+    .Use(CandlePart.HL2)
+    .ToCorrelation(quotesMarket.Use(CandlePart.HL2), lookbackPeriods);
+```
+
+<Warning>
+  Both `quotesA` and `quotesB` arguments must contain the same number of elements and be the results of a chainable indicator or `.Use()` method.
+</Warning>
+
+Results can be further processed on `Correlation`:
+
+```csharp
+var results = quotesA
+    .ToCorrelation(quotesB, lookbackPeriods)
+    .ToSlope(slopePeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## Interpretation
+
+| R value | Relationship |
+|---------|-------------|
+| `R = +1.0` | Perfect positive correlation |
+| `R > +0.7` | Strong positive correlation |
+| `R ≈ 0` | No linear relationship |
+| `R < -0.7` | Strong inverse correlation |
+| `R = -1.0` | Perfect inverse correlation |
+
+R-Squared tells you what fraction of the variance in one series is explained by the other. An R² of 0.80 means 80% of price movements in series A are linearly explained by series B.
+
+<Note>
+  Correlation only captures linear relationships. Two series can be strongly related in a nonlinear way while showing a low Pearson R.
+</Note>
+
+## See also
+
+<Columns cols={3}>
+  <Card title="Beta" href="/indicators/volatility/beta">
+    Beta Coefficient — directional market sensitivity
+  </Card>
+  <Card title="Slope" href="/indicators/volatility/slope">
+    Slope and Linear Regression — trend direction and R-Squared
+  </Card>
+  <Card title="Hurst Exponent" href="/indicators/volatility/hurst">
+    Hurst Exponent — trending vs. mean-reverting tendency
+  </Card>
+</Columns>

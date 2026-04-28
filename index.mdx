@@ -1,133 +1,103 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "Stock Indicators for .NET: Technical Analysis Library"
+description: "C# NuGet library that transforms OHLCV price quotes into 84+ technical indicators for algorithmic trading, charting, and financial analysis."
 ---
 
-## Setting up
+Stock Indicators for .NET is an open-source C# library that turns raw market price data into actionable technical indicators. Install a single NuGet package and get access to 84+ battle-tested indicators — from simple moving averages to Ichimoku clouds — with support for batch, incremental, and real-time streaming workflows.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the package and calculate your first indicator in under 5 minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Indicator Styles" icon="layer-group" href="/guide/overview">
+    Choose between batch, buffer list, and stream hub styles for your use case.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Browse Indicators" icon="chart-line" href="/indicators/moving-averages/ema">
+    Explore all 84+ indicators: moving averages, oscillators, channels, and more.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Utilities" icon="wrench" href="/utilities/quotes">
+    Helper functions for preparing quotes, processing results, and building custom indicators.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Get up and running
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Install the NuGet package">
+    Add `Skender.Stock.Indicators` to your .NET project using the CLI or Package Manager.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    ```bash
+    dotnet add package Skender.Stock.Indicators
+    ```
+  </Step>
+  <Step title="Provide historical quotes">
+    Supply OHLCV price data as `IReadOnlyList<Quote>` from your market data provider.
 
-## Make your content agent ready
+    ```csharp
+    using Skender.Stock.Indicators;
 
-Make your docs work for humans and AI agents alike.
+    IReadOnlyList<Quote> quotes = GetQuotesFromFeed("MSFT");
+    ```
+  </Step>
+  <Step title="Calculate an indicator">
+    Call any `To{Indicator}()` extension method on your quotes collection.
 
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
+    ```csharp
+    IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+    ```
+  </Step>
+  <Step title="Use the results">
+    Iterate over the typed results for charting, alerting, or trading logic.
 
-## Need inspiration?
+    ```csharp
+    foreach (SmaResult r in results)
+    {
+        Console.WriteLine($"SMA on {r.Timestamp:d} was {r.Sma:N4}");
+    }
+    ```
+  </Step>
+</Steps>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Why Stock Indicators for .NET?
+
+<CardGroup cols={3}>
+  <Card title="84+ Indicators" icon="shapes">
+    Moving averages, oscillators, price channels, volume-based, candlestick patterns, and volatility measures — all in one package.
+  </Card>
+  <Card title="Three API Styles" icon="arrows-split-up-and-left">
+    Batch (Series), incremental (BufferList), and real-time (StreamHub) styles to match any architecture.
+  </Card>
+  <Card title="Chainable API" icon="link">
+    Compute indicators of indicators — RSI of OBV, SMA of ADX — with a fluent, composable interface.
+  </Card>
+  <Card title=".NET 8, 9 and 10" icon="microsoft">
+    Targets all actively supported .NET platforms for maximum performance and compatibility.
+  </Card>
+  <Card title="Production-Ready" icon="shield-check">
+    Mathematical precision, comprehensive test coverage, and deterministic warmup behavior for confident production deployments.
+  </Card>
+  <Card title="Open Source" icon="code-branch">
+    Apache 2.0 licensed. Used in algorithmic trading, ML pipelines, charting tools, and financial analytics platforms.
+  </Card>
+</CardGroup>
+
+## Explore by indicator type
+
+<CardGroup cols={2}>
+  <Card title="Moving Averages" icon="wave-sine" href="/indicators/moving-averages/ema">
+    EMA, SMA, WMA, HMA, DEMA, TEMA, ALMA, KAMA, T3, VWMA, and more.
+  </Card>
+  <Card title="Oscillators and Momentum" icon="gauge-high" href="/indicators/oscillators/rsi">
+    RSI, MACD, Stochastic, CCI, Williams %R, ROC, TSI, and Ultimate Oscillator.
+  </Card>
+  <Card title="Price Channels and Bands" icon="chart-area" href="/indicators/channels/bollinger-bands">
+    Bollinger Bands, Keltner Channels, Donchian Channels, STARC Bands.
+  </Card>
+  <Card title="Trend and Volume" icon="arrow-trend-up" href="/indicators/trend/adx">
+    ADX, Aroon, Ichimoku, SuperTrend, Parabolic SAR, OBV, VWAP, MFI.
+  </Card>
+</CardGroup>
+
+<Note>
+  Looking for the Python version? Visit [python.stockindicators.dev](https://python.stockindicators.dev/) for the Python port of this library.
+</Note>

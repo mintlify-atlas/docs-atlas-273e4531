@@ -1,0 +1,275 @@
+---
+title: "Result utilities for Stock Indicators .NET"
+description: "Work with indicator results using RemoveWarmupPeriods, Condense, and ToSortedList to trim, filter, and sort result collections in Stock Indicators for .NET."
+---
+
+After calculating an indicator, result utilities let you strip unreliable warmup data, filter sparse signal results, sort custom result collections, and look up values by timestamp using LINQ. All utilities work with any indicator result type that implements the library's result interfaces.
+
+<Note>
+  The `Find()` utility was removed in v3. Use LINQ `FirstOrDefault()` to look up results by date: `results.FirstOrDefault(r => r.Timestamp == lookupDate)`.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Remove warmup periods" icon="scissors" href="#remove-warmup-periods">
+    Trim the initial convergence window from results.
+  </Card>
+  <Card title="Condense" icon="filter" href="#condense">
+    Return only meaningful records from sparse indicators.
+  </Card>
+  <Card title="Sort results" icon="arrow-up-wide-short" href="#sort-results">
+    Order result collections by ascending timestamp.
+  </Card>
+  <Card title="Find by date (LINQ)" icon="magnifying-glass" href="#find-by-date">
+    Look up a single result for a specific timestamp using LINQ.
+  </Card>
+</CardGroup>
+
+---
+
+## Find by date
+
+The `Find()` utility was removed in v3. Use standard LINQ to retrieve a result by timestamp:
+
+```csharp
+IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+
+DateTime lookupDate = DateTime.Parse("2024-01-15");
+
+// exact match
+SmaResult? result = results.FirstOrDefault(r => r.Timestamp == lookupDate);
+
+// date-only match (ignores time-of-day)
+SmaResult? result2 = results.FirstOrDefault(r => r.Timestamp.Date == lookupDate.Date);
+```
+
+### Common patterns
+
+<Tabs>
+  <Tab title="Single date lookup">
+    ```csharp
+    var rsiResults = quotes.ToRsi(14);
+    var todayRsi = rsiResults.FirstOrDefault(r => r.Timestamp.Date == DateTime.Today);
+
+    if (todayRsi is not null)
+    {
+        Console.WriteLine($"Today's RSI: {todayRsi.Rsi}");
+    }
+    ```
+  </Tab>
+  <Tab title="Comparing two dates">
+    ```csharp
+    var emaResults = quotes.ToEma(20);
+
+    var jan1 = emaResults.FirstOrDefault(r => r.Timestamp == DateTime.Parse("2024-01-01"));
+    var feb1 = emaResults.FirstOrDefault(r => r.Timestamp == DateTime.Parse("2024-02-01"));
+
+    if (jan1?.Ema is not null && feb1?.Ema is not null)
+    {
+        double change = feb1.Ema.Value - jan1.Ema.Value;
+        Console.WriteLine($"EMA changed by {change:F2}");
+    }
+    ```
+  </Tab>
+  <Tab title="Event-driven lookups">
+    ```csharp
+    var earningsDates = GetEarningsCalendar();
+
+    foreach (var date in earningsDates)
+    {
+        var result = rsiResults.FirstOrDefault(r => r.Timestamp.Date == date.Date);
+        if (result is not null)
+        {
+            Console.WriteLine($"RSI at earnings ({date:d}): {result.Rsi}");
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  For frequent lookups on large result sets, build a `Dictionary&lt;DateTime, TResult&gt;` once and query it in O(1) rather than scanning with LINQ in a loop.
+</Tip>
+
+---
+
+## Remove warmup periods
+
+`results.RemoveWarmupPeriods()` trims the initial convergence window from the beginning of a result collection. An overload accepts an explicit count for predictable pruning.
+
+```csharp
+// automatic — uses the indicator's recommended warmup length
+IReadOnlyList<TResult> trimmed = results.RemoveWarmupPeriods();
+
+// manual — specify exactly how many periods to remove
+IReadOnlyList<TResult> trimmed = results.RemoveWarmupPeriods(int removePeriods);
+```
+
+### Why warmup matters
+
+Most indicators need historical bars before they converge to a reliable value. A 20-period SMA, for example, produces `NaN` for its first 19 results. Removing those periods prevents misleading chart data and avoids false signals in backtests.
+
+### Usage
+
+<Tabs>
+  <Tab title="Automatic removal">
+    ```csharp
+    IReadOnlyList<AdxResult> results =
+        quotes.ToAdx(14).RemoveWarmupPeriods();
+    ```
+  </Tab>
+  <Tab title="Manual removal">
+    ```csharp
+    int n = 14;
+    IReadOnlyList<AdxResult> results =
+        quotes.ToAdx(n).RemoveWarmupPeriods(n + 100);
+    ```
+  </Tab>
+  <Tab title="Backtesting">
+    ```csharp
+    var signals = quotes
+        .ToRsi(14)
+        .RemoveWarmupPeriods()
+        .Where(r => r.Rsi > 70 || r.Rsi < 30);
+    ```
+  </Tab>
+</Tabs>
+
+### Typical warmup lengths
+
+| Indicator | Recommended warmup |
+|-----------|-------------------|
+| `SMA(n)` | n periods |
+| `EMA(n)` | 2 × n periods |
+| `RSI(n)` | n + 250 periods |
+| `ADX(n)` | 2 × n + 100 periods |
+| `MACD` | ~250 periods |
+
+<Warning>
+  Auto-pruning (no `removePeriods` argument) reverse-engineers the warmup length from the results. On chained indicators, this can remove **more data than intended**. Always specify `removePeriods` explicitly when working with chained calculations.
+
+  ```csharp
+  // avoid: unpredictable on chained indicators
+  var bad = quotes.ToEma(20).ToRsi(14).RemoveWarmupPeriods();
+
+  // prefer: explicit count
+  var good = quotes.ToEma(20).ToRsi(14).RemoveWarmupPeriods(300);
+  ```
+</Warning>
+
+<Note>
+  `RemoveWarmupPeriods()` without parameters is not available on every indicator. Use the explicit `removePeriods` overload when the parameterless version is not supported.
+</Note>
+
+---
+
+## Condense
+
+`results.Condense()` removes non-essential records and returns only meaningful ones. It is most useful with sparse indicators such as candlestick pattern detectors, where most periods produce no signal.
+
+```csharp
+IReadOnlyList<TResult> condensedResults = results.Condense();
+```
+
+### Usage
+
+```csharp
+// returns only dates where a Marubozu pattern was detected
+IReadOnlyList<CandleResult> signals =
+    quotes.ToMarubozu().Condense();
+
+foreach (var result in signals)
+{
+    Console.WriteLine($"{result.Timestamp:d}: signal detected");
+}
+```
+
+### Behavior by indicator type
+
+| Indicator type | What `Condense()` removes |
+|----------------|--------------------------|
+| Candlestick patterns | All records without a pattern match |
+| Signal-based indicators | All records without an active signal |
+| Continuous indicators | Warmup-period nulls / NaN values |
+
+### Signal-based trading example
+
+```csharp
+var signals = quotes
+    .ToMarubozu()
+    .Condense();
+
+foreach (var signal in signals)
+{
+    // CandleResult.Match is a Match enum value
+    if ((int)signal.Match > 0)
+    {
+        // bullish signal — enter long
+    }
+    else if ((int)signal.Match < 0)
+    {
+        // bearish signal — consider short
+    }
+}
+```
+
+<Warning>
+  Condensed results have gaps in the timeline. Do not assume consecutive records are adjacent periods when using `Condense()`.
+</Warning>
+
+<Tip>
+  Use `Condense()` when building event logs, reducing export file size, or feeding a signal list to a trading engine that only cares about actionable entries.
+</Tip>
+
+---
+
+## Sort results
+
+`results.ToSortedList()` returns an `IReadOnlyList<TResult>` ordered by ascending `Timestamp`. Built-in indicators always return sorted results — this utility is intended for custom indicator implementations or when you have merged/manipulated result collections.
+
+```csharp
+IReadOnlyList<TResult> sortedResults = results.ToSortedList();
+```
+
+### When to use
+
+<Note>
+  All built-in library indicators already return results in chronological order. You only need `ToSortedList()` for custom indicators or after manually manipulating timestamps.
+</Note>
+
+### Custom indicator pattern
+
+```csharp
+public static IReadOnlyList<CustomResult> ToCustomIndicator(
+    this IEnumerable<IQuote> quotes, int period)
+{
+    var quotesList = quotes.ToList();
+    var results = new List<CustomResult>();
+
+    for (int i = 0; i < quotesList.Count; i++)
+    {
+        results.Add(new CustomResult
+        {
+            Timestamp = quotesList[i].Timestamp,
+            Value = CalculateValue(quotesList, i, period)
+        });
+    }
+
+    // guarantee chronological order before returning
+    return results.ToSortedList();
+}
+```
+
+### Merging result collections
+
+```csharp
+var combined = results1
+    .Concat(results2)
+    .ToSortedList();
+```
+
+### Comparison with quote sorting
+
+| Utility | Input | Use case |
+|---------|-------|----------|
+| `ToSortedList()` on quotes | `IEnumerable<IQuote>` | Sort historical price data |
+| `ToSortedList()` on results | `IEnumerable<IResult>` | Sort indicator result collections |

@@ -1,0 +1,118 @@
+---
+title: "ATR: Average True Range — price volatility indicator"
+description: "Average True Range (ATR) by J. Welles Wilder measures volatility using price gaps and high-low ranges. Includes ATR percent for cross-security comparison."
+---
+
+Created by J. Welles Wilder, the Average True Range is a volatility indicator that accounts for price gaps between sessions as well as the intrabar high-low range. Unlike a simple range measure, True Range takes the maximum of three values — current high minus current low, current high minus previous close, and previous close minus current low — so that overnight gaps are fully reflected. Traders use ATR to size positions, set stop-loss distances, and assess whether a market is expanding or contracting in volatility.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the smoothed average. Must be greater than 1.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N+100` periods of quotes to cover the warmup and convergence period. For better precision, provide at least `N+250` data points prior to your intended start date.
+
+<Warning>
+  The first `N+100` periods will have convergence-related precision errors that can reach ~5% deviation in earlier values. Use `.RemoveWarmupPeriods()` to discard these.
+</Warning>
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Tr" type="double">
+  True Range for the current period.
+</ResponseField>
+
+<ResponseField name="Atr" type="double">
+  Average True Range. Returns `null` for the first `N` periods.
+</ResponseField>
+
+<ResponseField name="Atrp" type="double">
+  ATR as a percent of price: `(ATR / Close) × 100`. Normalizes ATR so it can be compared across different securities.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series — ATR on Close price
+IReadOnlyList<AtrResult> results =
+    quotes.ToAtr(lookbackPeriods);
+
+// ATR with a custom moving average (e.g. SMMA)
+IReadOnlyList<SmmaResult> results =
+    quotes.ToTr().ToSmma(lookbackPeriods);
+
+// raw True Range only
+IReadOnlyList<TrResult> results =
+    quotes.ToTr();
+```
+
+## Streaming
+
+Use `AtrList` for incremental calculations without a hub:
+
+```csharp
+AtrList atrList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    atrList.Add(quote);
+}
+
+// based on ICollection<AtrResult>
+IReadOnlyList<AtrResult> results = atrList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+AtrHub observer = quoteHub.ToAtrHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<AtrResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+ATR must be generated directly from `quotes` and cannot be generated from the results of another chain-enabled indicator. Results can be further processed on `Atrp`:
+
+```csharp
+var results = quotes
+    .ToAtr(lookbackPeriods)
+    .ToSlope(slopePeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## Interpretation
+
+- Rising ATR means volatility is expanding; falling ATR means it is contracting.
+- `Atrp` lets you compare volatility across securities with different price levels. A high-priced stock and a low-priced stock with the same raw ATR are not equally volatile — `Atrp` normalizes this.
+- ATR does not indicate direction, only magnitude.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="Beta" href="/indicators/volatility/beta">
+    Beta Coefficient — systemic market sensitivity
+  </Card>
+  <Card title="Hurst Exponent" href="/indicators/volatility/hurst">
+    Hurst Exponent — trending vs. mean-reverting tendency
+  </Card>
+  <Card title="Slope" href="/indicators/volatility/slope">
+    Slope and Linear Regression — trend direction and strength
+  </Card>
+</Columns>

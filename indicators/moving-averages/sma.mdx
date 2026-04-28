@@ -1,0 +1,137 @@
+---
+title: "SMA: Simple Moving Average indicator for Stock.Indicators"
+description: "The SMA calculates the unweighted mean of prices over a lookback window — the standard baseline for comparing faster or smoother moving averages."
+---
+
+The Simple Moving Average is the arithmetic mean of price over a fixed lookback window. Every period in the window carries equal weight, making SMA the straightforward baseline against which traders compare faster or smoother alternatives. It is widely used to identify trend direction, smooth noisy price data, and detect crossover signals when two SMAs of different lengths interact. An extended analysis variant adds mean absolute deviation (MAD), mean square error (MSE), and mean absolute percentage error (MAPE).
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the lookback window. Must be greater than 0.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N` periods of quotes to produce any values.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Sma" type="double">
+  Simple moving average value. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series (Close price by default)
+IReadOnlyList<SmaResult> results =
+    quotes.ToSma(lookbackPeriods);
+```
+
+### Extended analysis
+
+An extended version returns additional statistical metrics over the same window:
+
+```csharp
+IReadOnlyList<SmaAnalysisResult> analysis =
+    quotes.ToSmaAnalysis(lookbackPeriods);
+```
+
+#### `SmaAnalysisResult` fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Sma" type="double">
+  Simple moving average.
+</ResponseField>
+
+<ResponseField name="Mad" type="double">
+  Mean absolute deviation over the window.
+</ResponseField>
+
+<ResponseField name="Mse" type="double">
+  Mean square error over the window.
+</ResponseField>
+
+<ResponseField name="Mape" type="double">
+  Mean absolute percentage error over the window.
+</ResponseField>
+
+<Note>
+  An SMA analysis variant is also available that returns additional statistical properties like mean absolute deviation and MAPE alongside the standard SMA value.
+</Note>
+
+## Streaming
+
+Use `SmaList` for incremental calculations without a hub:
+
+```csharp
+SmaList smaList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    smaList.Add(quote);
+}
+
+// based on ICollection<SmaResult>
+IReadOnlyList<SmaResult> results = smaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+SmaHub observer = quoteHub.ToSmaHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<SmaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+SMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use Volume instead of Close
+var results = quotes
+    .Use(CandlePart.Volume)
+    .ToSma(lookbackPeriods);
+```
+
+SMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed SMA output into RSI
+var results = quotes
+    .ToSma(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="EMA" href="/indicators/moving-averages/ema">
+    Exponential Moving Average — recency-weighted, faster responding
+  </Card>
+  <Card title="WMA" href="/indicators/moving-averages/wma">
+    Weighted Moving Average — linearly weighted alternative
+  </Card>
+  <Card title="VWMA" href="/indicators/moving-averages/vwma">
+    Volume Weighted Moving Average — volume-adjusted average price
+  </Card>
+</Columns>

@@ -1,0 +1,159 @@
+---
+title: "Stock Indicators for .NET — Overview"
+description: "Transform OHLCV price quotes into 84+ technical indicators with batch, buffer, and streaming APIs for equities, forex, crypto, and more."
+---
+
+**Stock Indicators for .NET** is a C# library that turns historical price quotes into financial market technical indicators. Provide OHLCV data from any source — equities, commodities, forex, or cryptocurrencies — and get back accurate, production-ready results for moving averages, RSI, Stochastic Oscillator, Parabolic SAR, MACD, and many others. The library ships as the [`Skender.Stock.Indicators`](https://www.nuget.org/packages/Skender.Stock.Indicators) NuGet package and targets .NET 8, 9, and 10.
+
+<CardGroup cols={2}>
+  <Card title="84+ indicators" icon="chart-line">
+    Moving averages, oscillators, volatility bands, candlestick patterns, and more — all mathematically verified against authoritative references.
+  </Card>
+  <Card title="Three API styles" icon="layer-group">
+    **Series** for batch history, **BufferList** for incremental updates, and **StreamHub** for real-time observable pipelines — all producing identical results.
+  </Card>
+  <Card title="Indicator chaining" icon="link">
+    Compose indicators of indicators: calculate RSI of OBV, apply a moving average to any result, or build multi-step analysis pipelines with a fluent API.
+  </Card>
+  <Card title="Custom quote classes" icon="database">
+    Bring your own data model. Implement `IQuote` on any `record` or class to feed the library directly without transposing into a separate type.
+  </Card>
+</CardGroup>
+
+## Historical quotes
+
+All indicators consume historical price data through the standard `IQuote` interface. Provide data as an `IReadOnlyList<Quote>`, `List<Quote>`, or `ICollection<Quote>` with a consistent period frequency (daily, hourly, per-minute, etc.).
+
+| Property    | Type       | Description  |
+| ----------- | ---------- | ------------ |
+| `Timestamp` | `DateTime` | Close date   |
+| `Open`      | `decimal`  | Open price   |
+| `High`      | `decimal`  | High price   |
+| `Low`       | `decimal`  | Low price    |
+| `Close`     | `decimal`  | Close price  |
+| `Volume`    | `decimal`  | Volume       |
+
+<Note>
+  The library does not supply market data. You must provide quotes from your own data feed or brokerage API. See the community [discussion on market data sources](https://github.com/DaveSkender/Stock.Indicators/discussions/579) for options.
+</Note>
+
+### Using custom quote classes
+
+If you already have a quote model in your application, implement `IQuote` to use it directly:
+
+```csharp
+using Skender.Stock.Indicators;
+
+public record MyCustomQuote : IQuote
+{
+    // required IQuote properties
+    public DateTime Timestamp { get; set; }
+    public decimal Open { get; set; }
+    public decimal High { get; set; }
+    public decimal Low { get; set; }
+    public decimal Close { get; set; }
+    public decimal Volume { get; set; }
+
+    // your own additional properties
+    public int MyOtherProperty { get; set; }
+}
+```
+
+```csharp
+IReadOnlyList<MyCustomQuote> myQuotes = GetQuotesFromFeed("MSFT");
+
+// works exactly like the built-in Quote type
+IReadOnlyList<SmaResult> results = myQuotes.ToSma(20);
+```
+
+<Warning>
+  Custom quote types must use value-based equality. Use a `record` class or implement `IEquatable<T>` to ensure compatibility with StreamHub.
+</Warning>
+
+## Three API styles
+
+v3 introduces three calculation styles that cover the full spectrum from offline batch analysis to live streaming pipelines.
+
+### Series — batch processing
+
+The original and simplest style. Pass a complete history and receive a full result list. Ideal for backtesting, charting, and any scenario where all data is available upfront.
+
+```csharp
+using Skender.Stock.Indicators;
+
+IReadOnlyList<Quote> quotes = GetQuotesFromFeed("MSFT");
+
+// calculate 20-period SMA for the full history
+IReadOnlyList<SmaResult> results = quotes.ToSma(20);
+```
+
+### BufferList — incremental updates
+
+Maintains internal state so new quotes can be appended one at a time without recalculating the entire history. Suitable for basic live feeds or scenarios where data arrives incrementally.
+
+```csharp
+SmaList smaList = new(lookbackPeriods: 20);
+
+// add quotes as they arrive
+smaList.Add(newQuote);
+```
+
+### StreamHub — real-time observable pipelines
+
+A reactive, subscription-based pattern where chained hubs update automatically when upstream data changes. Designed for real-time market data processing.
+
+```csharp
+QuoteHub quoteHub = new();
+
+// subscribe indicators to the hub
+EmaHub emaHub = quoteHub.ToEma(20);
+RsiHub rsiHub = quoteHub.ToRsi(14);
+
+// stream quotes — all subscribed hubs update automatically
+foreach (Quote quote in liveQuotes)
+{
+    quoteHub.Add(quote);
+
+    EmaResult latest = emaHub.Results[^1];
+    RsiResult rsiLatest = rsiHub.Results[^1];
+}
+```
+
+## Chaining indicators
+
+Chain any indicator onto another using the same fluent `.To*()` methods. This works across all three API styles.
+
+```csharp
+// RSI of On-Balance Volume
+IReadOnlyList<RsiResult> results
+    = quotes
+        .ToObv()
+        .ToRsi(14);
+
+// EMA applied to the HL2 midpoint price
+IReadOnlyList<EmaResult> ema
+    = quotes
+        .Use(CandlePart.HL2)
+        .ToEma(20);
+```
+
+## Supported .NET versions
+
+The library multi-targets all actively supported Microsoft .NET platforms:
+
+- .NET 10.0
+- .NET 9.0
+- .NET 8.0
+
+The compiled package is [CLS-compliant](https://docs.microsoft.com/en-us/dotnet/standard/common-type-system) and usable from any .NET language. A [Python version](https://python.stockindicators.dev/) is also available.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the package and calculate your first indicator in minutes.
+  </Card>
+  <Card title="Browse indicators" icon="list" href="/indicators">
+    Explore all 84+ indicators with parameters, result types, and examples.
+  </Card>
+</CardGroup>

@@ -1,0 +1,114 @@
+---
+title: "Standard Deviation Channels: Regression Bands"
+description: "Standard Deviation Channels draw upper and lower bands around a linear regression center line, revealing statistically extreme price deviations from the trend."
+---
+
+Standard Deviation Channels place price bands around a linear regression line, where each band is offset by a configurable number of standard deviations from that regression. Unlike moving-average-based channels, the center line here is computed by ordinary least squares over a fixed window, so it represents the best-fit trend rather than a lagging average. Prices that reach the outer bands have deviated from the statistical trend by a measurable, quantifiable amount — making this indicator particularly useful for mean-reversion analysis and visual trend confirmation.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" default="20">
+  Size (`N`) of the rolling evaluation window. Must be `null` or greater than 1. Pass `null` to run the regression over the entire `quotes` collection — useful for full-history channel visualization.
+</ParamField>
+
+<ParamField path="stdDeviations" type="double" default="2">
+  Band width in standard deviations (`D`) from the regression center line. Must be greater than 0.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `StdDevChannelsResult` with the following fields.
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date corresponding to the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Centerline" type="double">
+  Linear regression line value for this period within the current window.
+</ResponseField>
+
+<ResponseField name="UpperChannel" type="double">
+  `D` standard deviations above the regression center line.
+</ResponseField>
+
+<ResponseField name="LowerChannel" type="double">
+  `D` standard deviations below the regression center line.
+</ResponseField>
+
+<ResponseField name="BreakPoint" type="bool">
+  `true` on the first bar of each new regression window. Use this flag to draw visual channel segments correctly when rendering the indicator on a chart.
+</ResponseField>
+
+## Usage
+
+Call `ToStdDevChannels()` on any `IEnumerable<TQuote>` to compute the full series in a single batch pass.
+
+```csharp
+IReadOnlyList<StdDevChannelsResult> results =
+    quotes.ToStdDevChannels(lookbackPeriods, stdDeviations);
+```
+
+Pass `null` for `lookbackPeriods` to compute a single regression channel across all available quotes:
+
+```csharp
+// full-history regression channel
+IReadOnlyList<StdDevChannelsResult> results =
+    quotes.ToStdDevChannels(null, stdDeviations);
+```
+
+Standard Deviation Channels can be computed on a transformed price source:
+
+```csharp
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToStdDevChannels(20, 2);
+```
+
+<Note>
+  Results from `ToStdDevChannels()` cannot be further chained with additional transforms.
+</Note>
+
+See [Chaining indicators](/guide/batch#chaining-indicators) for background on the chaining model.
+
+## Streaming
+
+<Warning>
+  **Streaming is not supported** for Standard Deviation Channels. The reverse-window regression algorithm must recalculate the entire dataset on every new data point, producing O(n²) computational cost. This makes real-time incremental updates impractical for both `BufferList` and `StreamHub` patterns.
+
+  **Recommendation**: use `ToStdDevChannels()` with periodic batch recalculation — for example, once per completed bar — rather than on every tick.
+</Warning>
+
+## Interpretation
+
+Standard Deviation Channels quantify how far price has strayed from the statistical trend:
+
+- **Price at or beyond the upper channel** is statistically overbought within the current window — a potential short or take-profit zone in a mean-reversion strategy.
+- **Price at or beyond the lower channel** is statistically oversold — a potential long entry or re-entry zone.
+- **Centerline slope** indicates the direction and steepness of the current regression trend. An upward-sloping center line confirms an uptrend; downward confirms a downtrend.
+- **`BreakPoint = true`** marks where the window resets, which causes the channels to visually "jump." On a chart, draw a new line segment starting at each break point.
+- When using the **full-history (`null`) variant**, the entire channel is drawn as a single segment from the first bar to the last — useful for identifying the macro trend in historical analysis.
+
+<Warning>
+  Standard Deviation Channels **repaint**: because the regression is recalculated over the rolling window, historical values change as new data arrives. This indicator is best suited for visualization and exploratory analysis, not for backtesting strategies that depend on fixed historical signals.
+</Warning>
+
+## Minimum history
+
+You must supply at least `N` periods of quotes. Up to `N-1` early periods will return `null` values while the window fills.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Bollinger Bands" icon="chart-line" href="/indicators/channels/bollinger-bands">
+    Standard deviation bands around a simple moving average.
+  </Card>
+  <Card title="Keltner Channels" icon="chart-line" href="/indicators/channels/keltner">
+    ATR-based bands around an EMA center line.
+  </Card>
+  <Card title="STARC Bands" icon="chart-line" href="/indicators/channels/starc-bands">
+    ATR-based bands around an SMA center line.
+  </Card>
+  <Card title="Donchian Channels" icon="chart-line" href="/indicators/channels/donchian">
+    Highest-high / lowest-low price channel.
+  </Card>
+</CardGroup>

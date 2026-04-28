@@ -1,0 +1,106 @@
+---
+title: "EMA: Exponential Moving Average indicator for .NET"
+description: "The EMA applies heavier weighting to recent prices, making it more responsive to new market information than a simple moving average of the same period."
+---
+
+The Exponential Moving Average is a rolling moving average that places greater weight on recent price data. Because older observations decay exponentially, EMA reacts faster to price changes than a Simple Moving Average of the same period. Traders use it to identify trend direction, dynamic support and resistance levels, and as a building block for indicators such as MACD.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) in the moving average. Must be greater than 0.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `2×N` or `N+100` periods of quotes, whichever is greater, to cover warmup and convergence. For better precision, provide at least `N+250` data points prior to your intended start date.
+
+<Warning>
+  The first `N+100` periods will have convergence-related precision errors that can reach ~5% deviation in earlier values. Use `.RemoveWarmupPeriods()` to discard these.
+</Warning>
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Ema" type="double">
+  Exponential moving average value. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series (Close price by default)
+IReadOnlyList<EmaResult> results =
+    quotes.ToEma(lookbackPeriods);
+```
+
+## Streaming
+
+Use `EmaList` for incremental calculations without a hub:
+
+```csharp
+EmaList emaList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    emaList.Add(quote);
+}
+
+// based on ICollection<EmaResult>
+IReadOnlyList<EmaResult> results = emaList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+EmaHub observer = quoteHub.ToEmaHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<EmaResult> results = observer.Results;
+```
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+EMA can be generated from any chain-enabled indicator or method:
+
+```csharp
+// use HL2 (midpoint) price instead of Close
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToEma(lookbackPeriods);
+```
+
+EMA results implement `IReusable` and can be chained into further indicators:
+
+```csharp
+// feed EMA output into RSI
+var results = quotes
+    .ToEma(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="SMA" href="/indicators/moving-averages/sma">
+    Simple Moving Average — equal-weight baseline
+  </Card>
+  <Card title="DEMA" href="/indicators/moving-averages/dema">
+    Double Exponential Moving Average — faster EMA variant
+  </Card>
+  <Card title="TEMA" href="/indicators/moving-averages/tema">
+    Triple Exponential Moving Average — even faster multi-smoothed variant
+  </Card>
+</Columns>

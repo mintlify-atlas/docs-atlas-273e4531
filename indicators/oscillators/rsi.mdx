@@ -1,0 +1,116 @@
+---
+title: "Relative Strength Index (RSI) Indicator"
+description: "Calculate RSI to identify overbought and oversold conditions on a 0–100 scale. Uses Wilder's smoothed moving average of recent gains and losses."
+---
+
+The Relative Strength Index (RSI) is a bounded momentum oscillator developed by J. Welles Wilder that measures the speed and magnitude of recent price changes on a scale of 0 to 100. It is most commonly used to identify overbought conditions (RSI above 70) and oversold conditions (RSI below 30), spot divergence between price and momentum, and confirm trend direction.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods `N` in the lookback window. Must be greater than 0. Default is **14**.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<RsiResult> results = quotes.ToRsi(lookbackPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Rsi" type="double | null">
+  Relative Strength Index value. `null` for the first `N-1` periods.
+</ResponseField>
+
+## Usage
+
+```csharp
+IReadOnlyList<RsiResult> results = quotes.ToRsi(lookbackPeriods);
+```
+
+RSI can be calculated on any chain-enabled indicator output:
+
+```csharp
+// use HL2 mid-price as the source
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToRsi(14);
+```
+
+Results can be further chained:
+
+```csharp
+var results = quotes
+    .ToRsi(14)
+    .ToSlope(5);
+```
+
+## Streaming
+
+Use `RsiList` for incremental updates without a hub:
+
+```csharp
+RsiList rsiList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  rsiList.Add(quote);
+}
+
+// based on ICollection<RsiResult>
+IReadOnlyList<RsiResult> results = rsiList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+RsiHub observer = quoteHub.ToRsiHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<RsiResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+| RSI range | Signal |
+|-----------|--------|
+| Above 70 | Overbought — potential reversal or pullback |
+| 30 – 70 | Neutral momentum range |
+| Below 30 | Oversold — potential bounce or reversal |
+
+RSI divergence (price making a new high while RSI does not) is a leading signal of weakening momentum. The classic 14-period setting works well for daily charts; shorter periods (e.g., 9) increase sensitivity, longer periods (e.g., 21) reduce noise.
+
+<Warning>
+RSI uses Wilder's smoothing (exponential moving average). The first `10×N` periods carry decreasing-magnitude convergence errors up to ~5%. Use `.RemoveWarmupPeriods()` or supply sufficient history to avoid acting on imprecise early values.
+</Warning>
+
+## Minimum history
+
+You must supply at least `N+100` periods of quotes to cover warmup and convergence. For best precision, use at least `10×N` periods prior to your intended start date.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Stochastic RSI" href="/indicators/oscillators/stoch-rsi">
+    Stochastic interpretation of the RSI value.
+  </Card>
+  <Card title="Stochastic Oscillator" href="/indicators/oscillators/stoch">
+    Price-range momentum on a 0–100 scale.
+  </Card>
+  <Card title="True Strength Index" href="/indicators/oscillators/tsi">
+    Double-smoothed EMA momentum oscillator.
+  </Card>
+  <Card title="Williams %R" href="/indicators/oscillators/williams-r">
+    Inverted stochastic with a −100 to 0 scale.
+  </Card>
+</CardGroup>

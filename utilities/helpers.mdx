@@ -1,0 +1,301 @@
+---
+title: "Helper utilities for custom indicator development"
+description: "Use NullMath null-safe operations and Numerical helper methods for slope and standard deviation when building custom indicators with Stock Indicators for .NET."
+---
+
+The helper utilities expose the same internal mathematical tools that the library's built-in indicators use. You can call them directly when implementing custom indicators, ensuring consistent behavior and avoiding boilerplate null-handling code.
+
+<CardGroup cols={2}>
+  <Card title="NullMath" icon="divide" href="#nullmath">
+    Null-safe wrappers for Abs, Round, Null2NaN, and NaN2Null.
+  </Card>
+  <Card title="Numerical methods" icon="function" href="#numerical-methods">
+    Slope (linear regression) and standard deviation functions.
+  </Card>
+</CardGroup>
+
+---
+
+## NullMath
+
+`NullMath` provides null-safe wrappers around common mathematical operations. Every method mirrors its `System.Math` counterpart but propagates `null` instead of throwing when the input is `null`.
+
+```csharp
+// without NullMath — explicit null check required
+decimal? value = GetNullableValue();
+decimal? result = value.HasValue ? Math.Abs(value.Value) : null;
+
+// with NullMath — null propagates automatically
+decimal? result = NullMath.Abs(value);
+```
+
+### Available methods
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `Abs` | `NullMath.Abs(decimal? value)` | Absolute value, or `null` |
+| `Round` | `NullMath.Round(decimal? value, int decimals)` | Rounded value, or `null` |
+| `Null2NaN` | `value.Null2NaN()` | `double.NaN` when input is `null`, otherwise the value |
+| `NaN2Null` | `value.NaN2Null()` | `null` when input is `NaN`, otherwise the value |
+
+### Abs
+
+Returns the absolute value of a nullable decimal, or `null` if the input is `null`.
+
+```csharp
+decimal? positive    = NullMath.Abs(-25m);   // 25
+decimal? fromNull    = NullMath.Abs(null);   // null
+decimal? alreadyPos  = NullMath.Abs(10m);    // 10
+```
+
+**Custom indicator use case** — computing absolute price change without null guards:
+
+```csharp
+public decimal? CalculateAbsChange(decimal? current, decimal? previous)
+{
+    // if either value is null, returns null automatically
+    return NullMath.Abs(current - previous);
+}
+```
+
+### Round
+
+Rounds a nullable decimal to a specified number of decimal places, returning `null` when the input is `null`.
+
+```csharp
+decimal? rounded = NullMath.Round(1.234m, 1);  // 1.2
+decimal? nulled  = NullMath.Round(null, 1);    // null
+decimal? whole   = NullMath.Round(1.567m, 0);  // 2
+```
+
+**Custom indicator use case** — formatting output values:
+
+```csharp
+public string FormatIndicatorValue(decimal? value)
+{
+    var rounded = NullMath.Round(value, 2);
+    return rounded?.ToString("F2") ?? "N/A";
+}
+```
+
+### Null2NaN
+
+Extension method on `double?`. Converts `null` to `double.NaN`. Use this when interfacing with charting libraries or external systems that represent missing data as `NaN` rather than `null`.
+
+```csharp
+double? nullValue    = null;
+double result        = nullValue.Null2NaN();  // double.NaN
+
+double? concreteValue = 1.5;
+double result2        = concreteValue.Null2NaN();  // 1.5
+```
+
+**Use case** — preparing data for a charting library:
+
+```csharp
+public double[] PrepareChartData(IEnumerable<decimal?> values)
+{
+    return values
+        .Select(v => ((double?)v).Null2NaN())
+        .ToArray();
+}
+```
+
+### NaN2Null
+
+Extension method on `double`. Converts `double.NaN` to `null`. Use this when ingesting data from external sources that use `NaN` for missing values.
+
+```csharp
+double nanValue  = double.NaN;
+double? result   = nanValue.NaN2Null();   // null
+
+double realValue = 1.5;
+double? result2  = realValue.NaN2Null();  // 1.5
+```
+
+**Use case** — importing from an external data source:
+
+```csharp
+public List<Quote> ImportFromExternalSource(ExternalData[] data)
+{
+    return data.Select(d => new Quote {
+        Timestamp = d.Date,
+        Open  = (decimal?)d.Open.NaN2Null(),
+        High  = (decimal?)d.High.NaN2Null(),
+        Low   = (decimal?)d.Low.NaN2Null(),
+        Close = (decimal?)d.Close.NaN2Null()
+    }).ToList();
+}
+```
+
+### Full custom indicator example
+
+Using `NullMath` throughout a custom indicator to eliminate repetitive null checks:
+
+```csharp
+public static IReadOnlyList<MyResult> ToMyIndicator(
+    this IEnumerable<IQuote> quotes, int period)
+{
+    var quotesList = quotes.ToList();
+    var results = new List<MyResult>();
+
+    for (int i = 0; i < quotesList.Count; i++)
+    {
+        decimal? previous = i > 0 ? results[i - 1].Value : null;
+        decimal? current  = quotesList[i].Close;
+
+        var change  = NullMath.Abs(current - previous);
+        var rounded = NullMath.Round(change, 2);
+
+        results.Add(new MyResult {
+            Timestamp = quotesList[i].Timestamp,
+            Value     = current,
+            AbsChange = rounded
+        });
+    }
+
+    return results;
+}
+```
+
+---
+
+## Numerical methods
+
+The `Numerical` class (formerly `Numerixs` in v2) provides statistical functions used internally by the library's built-in indicators. You can call the same functions in your own custom indicator implementations.
+
+### Slope
+
+Calculates the slope of the best-fit linear regression line through a set of (x, y) data points.
+
+```csharp
+double slope = Numerical.Slope(double[] xValues, double[] yValues);
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `xValues` | `double[]` | Independent variable (e.g., sequential period indices) |
+| `yValues` | `double[]` | Dependent variable (e.g., closing prices) |
+
+**Returns:** `double` — the slope of the regression line.
+
+#### Trend detection
+
+```csharp
+var closes  = quotes.TakeLast(20).Select(q => (double)q.Close).ToArray();
+var periods = Enumerable.Range(1, 20).Select(i => (double)i).ToArray();
+
+double trend = Numerical.Slope(periods, closes);
+
+if (trend > 0)
+    Console.WriteLine("Uptrend");
+else if (trend < 0)
+    Console.WriteLine("Downtrend");
+```
+
+#### Custom linear regression indicator
+
+```csharp
+public static IReadOnlyList<LinRegResult> ToLinearRegression(
+    this IEnumerable<IQuote> quotes, int period)
+{
+    var quotesList = quotes.ToList();
+    var results = new List<LinRegResult>();
+
+    for (int i = period - 1; i < quotesList.Count; i++)
+    {
+        var window  = quotesList.Skip(i - period + 1).Take(period);
+        var closes  = window.Select(q => (double)q.Close).ToArray();
+        var periods = Enumerable.Range(1, period).Select(p => (double)p).ToArray();
+
+        results.Add(new LinRegResult {
+            Timestamp = quotesList[i].Timestamp,
+            Slope     = Numerical.Slope(periods, closes)
+        });
+    }
+
+    return results;
+}
+```
+
+### Standard deviation
+
+Calculates the standard deviation of a collection of `double` values.
+
+```csharp
+double sd = values.StdDev();
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `values` | `double[]` or `IEnumerable<double>` | The sample data |
+
+**Returns:** `double` — the standard deviation.
+
+#### Measuring volatility
+
+```csharp
+var closes = quotes
+    .TakeLast(20)
+    .Select(q => (double)q.Close)
+    .ToArray();
+
+double volatility = closes.StdDev();
+Console.WriteLine($"20-period volatility: {volatility:F2}");
+```
+
+#### Custom Bollinger Bands
+
+```csharp
+public static IReadOnlyList<BollingerResult> ToCustomBollinger(
+    this IEnumerable<IQuote> quotes, int period, double multiplier)
+{
+    var quotesList = quotes.ToList();
+    var results    = new List<BollingerResult>();
+
+    for (int i = period - 1; i < quotesList.Count; i++)
+    {
+        var window = quotesList.Skip(i - period + 1).Take(period);
+        var closes = window.Select(q => (double)q.Close).ToArray();
+
+        var sma    = closes.Average();
+        var stdDev = closes.StdDev();
+
+        results.Add(new BollingerResult {
+            Timestamp = quotesList[i].Timestamp,
+            Middle    = sma,
+            Upper     = sma + (stdDev * multiplier),
+            Lower     = sma - (stdDev * multiplier)
+        });
+    }
+
+    return results;
+}
+```
+
+#### Z-score calculation
+
+```csharp
+var closes = quotes.Select(q => (double)q.Close).ToArray();
+var mean   = closes.Average();
+var stdDev = closes.StdDev();
+
+var zScores = closes.Select(c => (c - mean) / stdDev);
+```
+
+<Tip>
+  `Slope()` and `StdDev()` are the same functions used internally by the library's built-in Slope and Standard Deviation indicators. For large datasets or tight loops, cache results rather than recomputing on every tick.
+</Tip>
+
+### When to use helpers vs. built-in indicators
+
+Use helper methods directly when:
+
+- You are implementing a **custom indicator** that requires slope or standard deviation as an intermediate calculation
+- You need the raw numeric value without the full indicator result object overhead
+- You are building utilities that operate on raw `double[]` arrays rather than `IQuote` collections
+
+Use the built-in indicators (e.g., `ToSlope()`, `ToStdDev()`) when:
+
+- You need the full time-series result with `Timestamp` alignment
+- You want the indicator's own warmup handling and validation

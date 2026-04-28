@@ -1,0 +1,65 @@
+---
+title: "Indicator Styles Overview | Stock Indicators"
+description: "Compare the three Stock Indicators for .NET styles — Series batch, BufferList, and StreamHub — and choose the right one for your use case."
+---
+
+# Indicator styles overview
+
+Stock Indicators for .NET provides three distinct indicator styles so you can pick the approach that fits your data pipeline. Series batch style is the simplest and fastest option for one-time historical analysis. Buffer lists add incremental processing without hub infrastructure. Stream hubs deliver fully observable, coordinated real-time updates for live data feeds.
+
+## Style comparison
+
+| Style | Use case | Best for |
+| --- | --- | --- |
+| Series batch | Convert a full quote collection to indicators in one call | Once-and-done bulk conversions |
+| Buffer list | Standalone incrementing `ICollection` lists | Self-managed quote-by-quote processing |
+| Stream hub | Subscription-based hub–observer pattern | Streaming or live data sources |
+
+## Feature comparison
+
+| Feature | Series batch | Buffer list | Stream hub |
+| --- | --- | --- | --- |
+| Incrementing | No | Yes | Yes |
+| Batch speed | Fastest | Faster | Fast |
+| Scaling | Low | Moderate | High |
+| Class type | Static | Instance | Instance |
+| Base interface | `IReadOnlyList` | `ICollection` | `IStreamHub` |
+| Complexity | Lowest | Moderate | Highest |
+| Chainable | Yes | Yes | Yes |
+| Pruning | With utility | Auto-preset | Auto-preset |
+
+## When to use each style
+
+<AccordionGroup>
+  <Accordion title="Series batch — simplest, fastest, full history required">
+    Choose Series batch when you have a complete historical dataset and need to calculate indicators once. It is the best fit for backtesting, offline analysis, and any scenario where all quotes are available upfront. Results are returned as an immutable `IReadOnlyList<TResult>` with no ongoing state to manage.
+
+    **Avoid it when** quotes arrive incrementally or you need low-latency updates on a live feed.
+  </Accordion>
+
+  <Accordion title="Buffer list — incremental without hub overhead">
+    Choose Buffer lists when quotes arrive one at a time and you want a familiar `ICollection` interface without setting up a hub. Buffer lists maintain their own internal state and prune old results automatically via `MaxListSize`. They are a natural step up from batch style for growing datasets.
+
+    **Avoid it when** you need multiple indicators to stay synchronized on every new quote — that coordination burden belongs to the Stream hub.
+  </Accordion>
+
+  <Accordion title="Stream hub — real-time, coordinated, observable">
+    Choose Stream hubs for live data feeds, WebSocket integrations, or any architecture where multiple indicators must update together on each incoming quote. A single `quoteHub.Add(quote)` call cascades automatically through all subscribed indicator hubs in the correct sequence.
+
+    **Avoid it when** you are doing one-time historical analysis or simple sequential processing — the additional infrastructure complexity is unnecessary overhead.
+  </Accordion>
+</AccordionGroup>
+
+## Explore each style
+
+<CardGroup cols={3}>
+  <Card title="Series batch" icon="layer-group" href="/guide/batch">
+    One-time bulk conversions of complete historical datasets. The fastest and simplest approach.
+  </Card>
+  <Card title="Buffer list" icon="list" href="/guide/buffer">
+    Self-managed incremental `ICollection` lists. Add quotes one at a time without hub infrastructure.
+  </Card>
+  <Card title="Stream hub" icon="bolt" href="/guide/stream">
+    Observable hub–observer pattern for live feeds. Coordinated multi-indicator real-time updates.
+  </Card>
+</CardGroup>

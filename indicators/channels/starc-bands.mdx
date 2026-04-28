@@ -1,0 +1,129 @@
+---
+title: "STARC Bands: SMA Channels Scaled by ATR"
+description: "STARC Bands place ATR-scaled channels around an SMA, defining low-risk entry zones and high-risk exhaustion levels for swing traders and mean-reversion setups."
+---
+
+Created by Manning Stoller, the [Stoller Average Range Channel (STARC) Bands](https://www.investopedia.com/terms/s/starc.asp) combine a Simple Moving Average center line with band widths derived from the Average True Range (ATR). The SMA provides a stable, non-lagging reference for the trend, while ATR scaling ensures the channel adapts to current volatility. STARC Bands give traders a sense of where price is "cheap" or "expensive" relative to the prevailing trend at any given volatility regime. See [Keltner Channels](/indicators/channels/keltner) for the EMA-centered equivalent.
+
+## Parameters
+
+<ParamField path="smaPeriods" type="int">
+  Number of lookback periods (`S`) for the SMA center line. Must be greater than 1. Typically set between 5 and 10 for swing-trading applications.
+</ParamField>
+
+<ParamField path="multiplier" type="double" default="2">
+  ATR multiplier controlling band width. Must be greater than 0.
+</ParamField>
+
+<ParamField path="atrPeriods" type="int" default="10">
+  Number of lookback periods (`A`) for the Average True Range. Must be greater than 1. Commonly set equal to `smaPeriods`.
+</ParamField>
+
+## Result fields
+
+Each element in the returned series is a `StarcBandsResult` with the following fields.
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date corresponding to the evaluated quote.
+</ResponseField>
+
+<ResponseField name="UpperBand" type="double">
+  Upper STARC band: `SMA + (multiplier × ATR)`.
+</ResponseField>
+
+<ResponseField name="Centerline" type="double">
+  Simple moving average of price over `S` periods.
+</ResponseField>
+
+<ResponseField name="LowerBand" type="double">
+  Lower STARC band: `SMA - (multiplier × ATR)`.
+</ResponseField>
+
+## Usage
+
+Call `ToStarcBands()` on any `IEnumerable<TQuote>` to compute the full series in a single batch pass.
+
+```csharp
+IReadOnlyList<StarcBandsResult> results =
+    quotes.ToStarcBands(smaPeriods, multiplier, atrPeriods);
+```
+
+<Note>
+  STARC Bands are not chain-enabled. They must be generated from `quotes` directly and their result cannot be piped into further chain-enabled indicators.
+</Note>
+
+See [Chaining indicators](/guide/batch#chaining-indicators) for background on the chaining model.
+
+## Streaming
+
+Use `StarcBandsList` for incremental, event-driven processing without a hub:
+
+```csharp
+StarcBandsList starcBandsList = new(smaPeriods, multiplier, atrPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    starcBandsList.Add(quote);
+}
+
+// read as IReadOnlyList<StarcBandsResult>
+IReadOnlyList<StarcBandsResult> results = starcBandsList;
+```
+
+For pub/sub architectures, subscribe an observer to a `QuoteHub`:
+
+```csharp
+QuoteHub quoteHub = new();
+StarcBandsHub observer =
+    quoteHub.ToStarcBandsHub(smaPeriods, multiplier, atrPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<StarcBandsResult> results = observer.Results;
+```
+
+<Note>
+  See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for complete streaming guides.
+</Note>
+
+## Interpretation
+
+STARC Bands are designed to define high-probability entry and exit zones:
+
+- **Price near the upper band** signals an area of high risk for new long entries — price is stretched above normal volatility relative to the trend.
+- **Price near the lower band** signals a low-risk buying opportunity in an uptrend, where price has pulled back to an ATR-adjusted support level.
+- **Upper band acts as a stop target** for short positions; lower band for long positions.
+- **Price outside the bands** is not necessarily a trend reversal — it may indicate unusual momentum. Wait for confirmation before fading the move.
+- Because the center line is a simple (non-lagging) average, STARC Bands react faster than Keltner Channels during sudden price changes.
+
+<Tip>
+  STARC Bands work well as a companion to a trend filter such as a 200-period SMA. Trade only the low-risk band touches in the direction confirmed by the longer trend filter.
+</Tip>
+
+## Minimum history
+
+You must supply at least the greater of `S` or `A+100` periods of quotes to cover the warm-up and convergence periods. For better precision, provide at least `A+150` data points prior to the intended start date.
+
+<Warning>
+  The first `A+150` periods will contain convergence-related precision errors up to ~5% deviation in indicator values due to ATR smoothing warm-up. Use `.RemoveWarmupPeriods()` to trim these values before production use.
+</Warning>
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="Keltner Channels" icon="chart-line" href="/indicators/channels/keltner">
+    EMA-centered equivalent of STARC Bands.
+  </Card>
+  <Card title="Bollinger Bands" icon="chart-line" href="/indicators/channels/bollinger-bands">
+    Standard deviation bands around an SMA.
+  </Card>
+  <Card title="Donchian Channels" icon="chart-line" href="/indicators/channels/donchian">
+    Highest-high / lowest-low price channel.
+  </Card>
+  <Card title="Standard Deviation Channels" icon="chart-line" href="/indicators/channels/std-dev-channels">
+    Linear-regression channels with std-dev band widths.
+  </Card>
+</CardGroup>

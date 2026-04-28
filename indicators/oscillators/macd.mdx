@@ -1,0 +1,142 @@
+---
+title: "MACD – Moving Average Convergence Divergence"
+description: "Calculate MACD to identify trend direction and momentum shifts. Returns the MACD line, signal line, and histogram from two converging/diverging EMAs."
+---
+
+Moving Average Convergence Divergence (MACD), developed by Gerald Appel, expresses the relationship between two exponential moving averages as a single oscillator line and a smoothed signal line. The difference between these two lines — the histogram — is a widely used measure of momentum acceleration and deceleration. Traders use crossovers of the MACD and signal lines to time entries, and histogram reversals to anticipate trend changes.
+
+## Parameters
+
+<ParamField path="fastPeriods" type="int" required>
+  Number of periods `F` for the faster EMA. Must be greater than 0. Default is **12**.
+</ParamField>
+
+<ParamField path="slowPeriods" type="int" required>
+  Number of periods `S` for the slower EMA. Must be greater than `fastPeriods`. Default is **26**.
+</ParamField>
+
+<ParamField path="signalPeriods" type="int" required>
+  Number of periods `P` for the EMA of the MACD line. Must be ≥ 0. Default is **9**.
+</ParamField>
+
+## Result fields
+
+```csharp
+IReadOnlyList<MacdResult> results =
+  quotes.ToMacd(fastPeriods, slowPeriods, signalPeriods);
+```
+
+<ResponseField name="Timestamp" type="DateTime">
+  Date from the evaluated `TQuote`.
+</ResponseField>
+
+<ResponseField name="Macd" type="double | null">
+  MACD line: `FastEma − SlowEma`. `null` for the first `S-1` periods.
+</ResponseField>
+
+<ResponseField name="Signal" type="double | null">
+  Signal line: EMA of the MACD line over `P` periods.
+</ResponseField>
+
+<ResponseField name="Histogram" type="double | null">
+  Gap between the MACD and signal lines: `Macd − Signal`.
+</ResponseField>
+
+<ResponseField name="FastEma" type="double | null">
+  Fast Exponential Moving Average (period `F`).
+</ResponseField>
+
+<ResponseField name="SlowEma" type="double | null">
+  Slow Exponential Moving Average (period `S`).
+</ResponseField>
+
+## Usage
+
+```csharp
+// C# usage syntax (with Close price)
+IReadOnlyList<MacdResult> results =
+  quotes.ToMacd(fastPeriods, slowPeriods, signalPeriods);
+```
+
+MACD can be calculated on any chain-enabled source:
+
+```csharp
+var results = quotes
+    .Use(CandlePart.HL2)
+    .ToMacd(12, 26, 9);
+```
+
+Chain further indicators on the `Macd` output value:
+
+```csharp
+var results = quotes
+    .ToMacd(12, 26, 9)
+    .ToSlope(5);
+```
+
+## Streaming
+
+Use `MacdList` for incremental updates without a hub:
+
+```csharp
+MacdList macdList = new(fastPeriods, slowPeriods, signalPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  macdList.Add(quote);
+}
+
+// based on ICollection<MacdResult>
+IReadOnlyList<MacdResult> results = macdList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+MacdHub observer = quoteHub.ToMacdHub(fastPeriods, slowPeriods, signalPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+  quoteHub.Add(quote);
+}
+
+IReadOnlyList<MacdResult> results = observer.Results;
+```
+
+See [Buffer lists](/guide/buffer) and [Stream hubs](/guide/stream) for full usage guides.
+
+## Interpretation
+
+- **MACD crosses above zero** — fast EMA has moved above slow EMA; bullish momentum.
+- **MACD crosses below zero** — fast EMA has moved below slow EMA; bearish momentum.
+- **MACD crosses above Signal** — momentum acceleration; potential buy signal.
+- **MACD crosses below Signal** — momentum deceleration; potential sell signal.
+- **Histogram shrinking toward zero** — momentum is fading; watch for a line crossover.
+
+Bearish or bullish divergence (price and MACD moving in opposite directions) often precedes reversals.
+
+<Warning>
+MACD uses exponential smoothing. The first `S+P+250` periods carry convergence errors up to ~5%. Supply sufficient history or call `.RemoveWarmupPeriods()` before using values in live analysis.
+</Warning>
+
+## Minimum history
+
+You must supply the greater of `2×(S+P)` or `S+P+100` periods of quotes. For best precision, use at least `S+P+250` periods prior to your intended start date.
+
+## See also
+
+<CardGroup cols={2}>
+  <Card title="RSI" href="/indicators/oscillators/rsi">
+    Bounded momentum on a 0–100 scale.
+  </Card>
+  <Card title="Rate of Change" href="/indicators/oscillators/roc">
+    Simple percent-change momentum oscillator.
+  </Card>
+  <Card title="True Strength Index" href="/indicators/oscillators/tsi">
+    Double-smoothed EMA momentum oscillator.
+  </Card>
+  <Card title="Stochastic Oscillator" href="/indicators/oscillators/stoch">
+    Compares close to recent high/low range.
+  </Card>
+</CardGroup>

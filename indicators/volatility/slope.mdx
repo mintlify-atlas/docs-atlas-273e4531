@@ -1,0 +1,133 @@
+---
+title: "Slope and Linear Regression: trend strength indicator"
+description: "Slope uses least-squares regression to identify trend direction and strength. Returns slope, intercept, standard deviation, R-Squared, and regression line."
+---
+
+Slope fits an ordinary least-squares linear regression line through price over a rolling lookback window and returns the slope of that line at each period. A positive slope indicates an upward trend; a negative slope indicates a downward trend; and the magnitude reflects how steep the trend is. The result set also includes the Y-intercept, standard deviation, R-Squared (goodness of fit), and the actual regression line values for the most recent window — making it useful for both quantitative trend filters and charting.
+
+## Parameters
+
+<ParamField path="lookbackPeriods" type="int" required>
+  Number of periods (`N`) for the linear regression window. Must be greater than 1.
+</ParamField>
+
+### Minimum history
+
+You must supply at least `N` periods of quotes to cover the warmup period.
+
+## Result fields
+
+<ResponseField name="Timestamp" type="DateTime" required>
+  Date from the evaluated quote.
+</ResponseField>
+
+<ResponseField name="Slope" type="double">
+  Slope (`m`) of the best-fit line of price over `N` periods. Returns `null` for the first `N-1` periods.
+</ResponseField>
+
+<ResponseField name="Intercept" type="double">
+  Y-intercept (`b`) of the best-fit line.
+</ResponseField>
+
+<ResponseField name="StdDev" type="double">
+  Standard deviation of price over the `N` lookback periods.
+</ResponseField>
+
+<ResponseField name="RSquared" type="double">
+  R-Squared (R²), also known as Coefficient of Determination. Measures how well the linear model fits price.
+</ResponseField>
+
+<ResponseField name="Line" type="decimal">
+  Best-fit regression line value (`y = mx + b`) using the last period's parameters. Only populated for the most recent `N` periods of your quote history.
+</ResponseField>
+
+## Usage
+
+```csharp
+// batch series
+IReadOnlyList<SlopeResult> results =
+    quotes.ToSlope(lookbackPeriods);
+```
+
+<Warning>
+  The `Line` property repaints continuously because it is recalculated from the most recent `N` periods as new data arrives. Do not use `Line` for historical backtesting without accounting for this behavior.
+</Warning>
+
+## Streaming
+
+Use `SlopeList` for incremental calculations without a hub:
+
+```csharp
+SlopeList slopeList = new(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    slopeList.Add(quote);
+}
+
+// based on ICollection<SlopeResult>
+IReadOnlyList<SlopeResult> results = slopeList;
+```
+
+Subscribe to a `QuoteHub` for advanced streaming scenarios:
+
+```csharp
+QuoteHub quoteHub = new();
+SlopeHub observer = quoteHub.ToSlopeHub(lookbackPeriods);
+
+foreach (IQuote quote in quotes)  // simulating stream
+{
+    quoteHub.Add(quote);
+}
+
+IReadOnlyList<SlopeResult> results = observer.Results;
+```
+
+<Warning>
+  The streaming implementation exhibits the same repaint behavior as the batch version. `Line` values are recalculated for the last `N` periods as new data arrives.
+</Warning>
+
+See [buffer lists](/guide/buffer) and [stream hubs](/guide/stream) for full usage guides.
+
+## Chaining
+
+Slope can be generated from any chain-enabled indicator or method:
+
+```csharp
+// chain from EMA output
+var results = quotes
+    .ToEma(emaPeriods)
+    .ToSlope(lookbackPeriods);
+```
+
+Results can be further processed on `Slope`:
+
+```csharp
+var results = quotes
+    .ToSlope(lookbackPeriods)
+    .ToRsi(rsiPeriods);
+```
+
+See [chaining indicators](/guide/batch#chaining-indicators) for more.
+
+## Interpretation
+
+- **Positive slope**: price is trending upward over the window.
+- **Negative slope**: price is trending downward.
+- **Slope magnitude**: larger absolute values mean a steeper, stronger trend.
+- **R-Squared**: values close to 1.0 mean price fits the line well (clean trend); values near 0 mean price is erratic relative to the regression.
+- **StdDev**: measures dispersion of price around the regression line — useful as a volatility proxy or for constructing regression channels.
+
+## See also
+
+<Columns cols={3}>
+  <Card title="ATR" href="/indicators/volatility/atr">
+    Average True Range — price volatility measure
+  </Card>
+  <Card title="Correlation" href="/indicators/volatility/correlation">
+    Correlation Coefficient — R-Squared between two series
+  </Card>
+  <Card title="Hurst Exponent" href="/indicators/volatility/hurst">
+    Hurst Exponent — trending vs. mean-reverting tendency
+  </Card>
+</Columns>
